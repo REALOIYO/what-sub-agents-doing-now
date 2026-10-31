@@ -166,6 +166,68 @@ suspicious, and only forbids looping:
 > `possibly-stuck` is not a failure verdict. A child legitimately waiting on its
 > own descendants lands here too.
 
+> **`idle` 不等于干完了。** 它只说明当前没有 turn 在执行 —— 可能在等下一条消息，
+> 也可能真结束了。真正的完成信号是结算消息，不是 `idle`。
+>
+> **`idle` does not mean done.** It only says no turn is currently executing: the
+> child may be waiting for its next message, or it may be finished. The real
+> completion signal is the settlement notice, not `idle`.
+
+### 终止原因 / Why it stopped
+
+一个子代理结束，可能是干完了，也可能是**被输出上限截断、报错、或者被中断**。
+这三种情况在没有额外信息时长得一模一样：session 卸载了，结算通知里只有
+`kind`/`form`/`summary`/`senderSessionId`，没有任何结果字段。
+
+A child can stop because it finished — or because it hit the output token limit,
+errored out, or was aborted. Without extra signal these look identical: the
+session is unloaded and the settlement notice carries no outcome field.
+
+后果很实际：**被截断的半截结论会被当成最终答案。**
+
+The consequence is concrete: **a half-finished answer gets read as final.**
+
+所以插件从 `turn/end` 的 `reason` 里取终止原因：
+
+So the plugin reads it from `turn/end`:
+
+```
+7dca3e4e [idle] — 分析 D 组 tools 实现
+    stop reason: STOPPED by the output token limit — its answer was cut off
+    mid-thought, so treat the closing message as incomplete and re-delegate if
+    you need the rest
+    closing message, 240s ago:
+      四步调查已完成，证据链闭合。接下来，我要把结论发回父 agent；现在先查找通信工具。
+```
+
+`reason.kind` 实测取值：
+
+| kind | 含义 / Meaning | 该怎么办 / What to do |
+|---|---|---|
+| `completed` | 正常干完 / finished | 可以信结论 / Trust the result |
+| `max-tokens` | 输出被截断 / cut off at the limit | **别信结论，重新派** / Don't trust it, re-delegate |
+| `interrupted` | 被中断 / interrupted | 同上 / Same |
+| `aborted` | 被中止（`via` 说明是谁）/ aborted | 同上 / Same |
+| `error` | 出错（带 `message`/`code`）/ failed | 看错误决定重试还是换路 / Read the error, then retry or reroute |
+
+子会话还活着时，原因来自投影状态；**已经卸载时**，回退到
+`ctx.sessionQuery.listEvents(id)` 读持久化日志 —— 那个 API 优先读 live、读不到
+才读磁盘，所以卸载后仍然有效。`sessionQuery` 用 `ctx.get()` 取，不写进
+`inject`：它是增强项，缺了插件照样完整可用。
+
+While the child is alive the reason comes from projection state; **after unload**
+it falls back to `ctx.sessionQuery.listEvents(id)`, which prefers live and falls
+back to the persisted log. `sessionQuery` is fetched with `ctx.get()` rather than
+declared in `inject`: it is an enhancement, and its absence must not block
+loading.
+
+> 有一种情况抓不到：**用户手动按了停止**。框架把这次 `turn/end` 记成
+> `completed`，和"自己干完了"无法区分。这时候只能看收尾语本身写了什么。
+>
+> One case is invisible: **a manual user stop**. The framework records that
+> `turn/end` as `completed`, indistinguishable from finishing on its own. Only
+> the closing message itself carries the hint.
+
 ### 往回翻 / Paging backwards
 
 返回里带两个计数 / Every row carries two counters:

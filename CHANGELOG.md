@@ -30,9 +30,38 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **strictly-less-than** seq filter, and passing `1` returns nothing because seq
   starts at 0.
 
-### Changed
+- **Termination reason (`stopReason`).** A child that hit the output token limit,
+  errored out, or was aborted looks exactly like one that finished normally: its
+  session is unloaded and the settlement notice carries only
+  `kind`/`form`/`summary`/`senderSessionId` — no outcome field. The parent would
+  read a half-finished answer as a final one.
 
-- **Tool description now states the trigger, not just the subject.** A monitoring
+  The `turn/end` event does carry it (`reason.kind` = `completed` / `max-tokens` /
+  `interrupted` / `aborted` / `error`), so the projection unit now folds it into
+  `stopReason` while the session is still alive. Once the child settles,
+  `readStopReasonFromLog` falls back to `sessionQuery.listEvents(id)` — that API
+  is live-preferred but reads the persisted log, so it works after unload.
+  Rendered as plain English:
+
+  ```
+  stop reason: STOPPED by the output token limit — its answer was cut off
+  mid-thought, so treat the closing message as incomplete and re-delegate if
+  you need the rest
+  ```
+
+  `sessionQuery` is looked up with `ctx.get('sessionQuery')`, not declared in
+  `inject`: it is an enhancement, and its absence must not stop the plugin from
+  loading.
+
+- **Regression tests for projection-state null-safety in `buildRow`.** `readProgress`
+  only guarded `undefined`; `stateOf` returning `null` reached
+  `progress.lastAt` and threw `TypeError`, failing the whole tool call. Fixed
+  with an object check plus a `narration` array guard, and eight tests that
+  reproduce each shape (`null` state, `null` narration, missing `narration`,
+  non-array narration). Verified by reverting the guard: the tests fail with
+  `Cannot read properties of null (reading 'lastAt')`.
+
+ A monitoring
   tool that only says *what* it does never gets called: after delegating, the
   model moves on to other work and only looks back on the settlement notice —
   which arrives exclusively at the end, i.e. exactly when it does not need
@@ -52,10 +81,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (+89), paid every turn. Accepted because a tool nobody calls costs more than
   the tokens it saves.
 
-- **`stateVersion` bumped 1 → 2.** DSH discards checkpoint rows whose `ver` does
+- **`stateVersion` bumped 1 → 3.** DSH discards checkpoint rows whose `ver` does
   not match the live unit's `stateVersion`
   (`never a migration`), so existing projection rows are dropped and re-folded
   from the session log on first touch. Nothing crashes; narration simply rebuilds.
+  (2 added `settled`, 3 added `stopReason`.)
 
 - **Trimmed the static token cost from ~783 to ~484 tokens.** The earlier figure
   was measured on pretty-printed JSON; the model actually receives compact JSON.
