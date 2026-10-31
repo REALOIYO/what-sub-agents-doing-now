@@ -76,6 +76,35 @@ dsh plugin --profile <profile> add file:/path/to/what-sub-agents-doing-now
 
 Or use the plugin manager in DSH settings. Restart DSH afterwards.
 
+### `file:` 还是 `link:` / `file:` or `link:`
+
+两者都能装，但热重载行为完全不同：
+
+Both work, but hot-reload behaviour differs completely:
+
+| 协议 / Protocol | 形态 / Form | 改代码后 / After editing code |
+|---|---|---|
+| `file:` | pnpm 真实拷贝 / real copy | **必须重启** / **restart required** |
+| `link:` | 目录符号链接 / directory symlink | 自动热重载 / hot-reloads automatically |
+
+原因是 DSH 的 HMR 靠 `dsh-hmr` 的 `profileRoots()` 决定哪些已加载模块属于当前
+profile —— 它只挑 `node_modules` 里**符号链接**的目标加进观察范围。
+`file:` 装出来的是真实目录，不在那个范围里，改了也不会重新加载。
+
+DSH's HMR relies on `profileRoots()` in `dsh-hmr` to decide which loaded modules
+belong to the profile — it only picks up the **symlink targets** under
+`node_modules`. A `file:` install is a real directory, so it falls outside that
+range and edits never trigger a reload.
+
+想开发时热重载 / For hot-reload while developing:
+
+```sh
+dsh plugin --profile <profile> add link:/path/to/what-sub-agents-doing-now
+```
+
+> 注意 `link:` 的代价：源目录被移动或删除后，该 entry 加载失败。按上游逻辑
+> 它只会打 warning，不会让 DSH 起不来。
+
 ## 用法 / Usage
 
 模型侧只有一个新工具 / One new tool on the model side:
@@ -137,6 +166,86 @@ Exact count of notes added since the previous look.
   config:
     stuckMs: 120000   # 多久没动静标成 possibly-stuck，默认 120000（2 分钟）
 ```
+
+## Token 成本 / Token cost
+
+分两部分，性质完全不同。
+
+Two separate parts with very different characteristics.
+
+### 静态成本：每轮都付 / Static: paid every turn
+
+工具定义常驻 system prompt，只要插件装着就要付：
+
+The tool definition sits in the system prompt for as long as the plugin is
+installed:
+
+| 部分 / Part | tokens |
+|---|---|
+| description | ~164 |
+| parameters schema | ~146 |
+| output schema | ~171 |
+| **合计 / Total** | **~484** |
+
+（按紧凑 JSON 实测；中文按 1 字 ≈ 1 token、其余 4 字符 ≈ 1 token 保守估算。）
+
+Measured on the compact JSON actually sent; conservative estimate.
+
+schema 里不写字段级描述，语义都在 `description` 里讲一次 —— 静态成本是每轮
+都付的，重复描述没有意义。
+
+Field-level docs are deliberately kept out of the schema; semantics are explained
+once in `description`. Static cost is paid every turn, so duplication is waste.
+
+### 动态成本：每次调用 / Dynamic: per call
+
+**插件不会主动推送。** 你不调，context 里就只有上面那 ~484 tokens。
+调一次，返回那一刻的快照。
+
+**The plugin never pushes.** If you never call it, the only cost is the ~484
+tokens above. Each call returns a snapshot of that moment.
+
+实测返回量 / Measured return sizes:
+
+| 场景 / Scenario | tokens |
+|---|---|
+| 1 个子代理，`includeNarration: false` | ~32 |
+| 1 个子代理，6 条短旁白 | ~137 |
+| 3 个子代理，各 6 条短旁白 | ~387 |
+| 5 个子代理，各 6 条短旁白 | ~645 |
+| 1 个子代理，6 条满长度旁白（200 字符上限） | ~1238 |
+
+**关键：每次返回都会累积进对话历史。** 调 20 次就是 20 份返回，全部留在
+context 里。控制成本靠减少调用次数，不是靠插件本身。
+
+**Important: every return accumulates in the conversation history.** Twenty calls
+leave twenty responses in context. Cost control comes from calling less often,
+not from the plugin.
+
+省 token 的三个办法 / Three ways to spend less:
+
+1. `includeNarration: false` —— 只要状态，不要旁白（32 vs 137）
+2. 调小 `limit` —— `limit: 2` 比默认 6 少三分之二
+3. **少调** —— 一次看清胜过五次分别看
+
+### 会不会爆炸 / Will it blow up
+
+不会。插件内部状态是环形缓冲，每个子代理封顶 200 条 × 200 字符：
+
+No. Internal state is a ring buffer capped at 200 entries × 200 characters per
+subagent:
+
+```
+写到第  100 条时: 保留 100 条, 状态  5222 B
+写到第  500 条时: 保留 200 条, 状态 11053 B
+写到第 1000 条时: 保留 200 条, 状态 11053 B   ← 封顶，不再增长
+```
+
+**但这个上限管的是插件内部状态，不是返回给模型的内容。** 返回累积到 context
+是调用次数的函数，由调用方控制。
+
+**That cap bounds internal state, not what reaches the model.** Accumulation in
+context is a function of how often you call.
 
 ## 设计取舍 / Design notes
 
@@ -224,12 +333,35 @@ enforced by the runtime ring buffer (200 entries) rather than the schema.
 
 ## 已知限制 / Known limits
 
+- **嵌套子代理未经实测** / **Nested subagents untested**
+
+  目前只在一层委派下验证过（主代理 → 子代理）。子代理再派孙代理的情况没有实测，
+  因为它在实际使用中很少见。
+
+  `scope: 'descendants'` 走的是上游 `listDescendants()`，会递归读取每个子级的
+  目录，理论上支持多层（上游文档说以稳定前序递归、保留每层的事件顺序）。但
+  **这条路径我没有跑过真实用例**，不排除孙代理的旁白读不到、或者状态判定不准。
+
+  如果你需要嵌套场景，建议先用 `scope: 'descendants'` 小范围验证一次再依赖它。
+
+  Only one level of delegation (parent → child) has been verified. A child that
+  spawns its own grandchildren is **not tested**, because it is rare in practice.
+
+  `scope: 'descendants'` delegates to upstream `listDescendants()`, which recurses
+  through each child's catalog and is documented to support multiple levels. That
+  path has **not** been exercised against a real grandchild tree here, so
+  grandchild narration or state classification may misbehave. Verify with a small
+  case before relying on it.
+
 - `possibly-stuck` 是启发式，不是故障判定 / heuristic, not a failure verdict
 - 子代理结束后 session 会从内存卸载，此时读不到旁白（返回显式 `note`）
   / a finished child's session is unloaded; narration is unavailable then
 - `narrationSinceLastLook` 的游标在 DSH 重启后失效，失效时该字段省略
   / the cursor dies with a DSH restart; the field is omitted afterwards
 - 只观察自己的下级，不跨父代理聚合 / observes direct descendants only
+- **纯文本旁白**：只取 `text` block，`image` / `reasoning` 都跳过（图不是进度说明，
+  思考过程会撑爆 context）。若子代理某一步只发了图片，那条不会出现在旁白里
+  / **text only**: `image` and `reasoning` blocks are skipped by design
 - 不修复上游「父代理消失时结算丢失」的问题（那需要改 `app.asar`）
   / does **not** fix upstream's "settlement lost when the parent vanished"
 
