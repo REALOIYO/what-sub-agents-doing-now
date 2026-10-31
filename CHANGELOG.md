@@ -68,5 +68,5 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `validateJsonSchemaValue` (`test/schema.dsh.mjs`)
 - 24 integration checks (`test/integration.dsh.mjs`)
 
-[0.1.1]: https://github.com/REALOIYO/whatsubagentsdoingnow/releases/tag/v0.1.1
-[0.1.0]: https://github.com/REALOIYO/whatsubagentsdoingnow/releases/tag/v0.1.0
+[0.1.1]: https://github.com/REALOIYO/what-sub-agents-doing-now/releases/tag/v0.1.1
+[0.1.0]: https://github.com/REALOIYO/what-sub-agents-doing-now/releases/tag/v0.1.0

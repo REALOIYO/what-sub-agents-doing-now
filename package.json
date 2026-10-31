@@ -1,5 +1,5 @@
 {
-  "name": "whatsubagentsdoingnow",
+  "name": "what-sub-agents-doing-now",
   "version": "0.1.1",
   "description": "See what each subagent is actually doing: surface the progress notes a child wrote itself, not just running/inactive. Read-only, non-shadowing.",
   "type": "module",
@@ -41,12 +41,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/REALOIYO/whatsubagentsdoingnow.git"
+    "url": "git+https://github.com/REALOIYO/what-sub-agents-doing-now.git"
   },
   "bugs": {
-    "url": "https://github.com/REALOIYO/whatsubagentsdoingnow/issues"
+    "url": "https://github.com/REALOIYO/what-sub-agents-doing-now/issues"
   },
-  "homepage": "https://github.com/REALOIYO/whatsubagentsdoingnow#readme",
+  "homepage": "https://github.com/REALOIYO/what-sub-agents-doing-now#readme",
   "engines": {
     "node": ">=22",
     "dsh": ">=0.2.1-rc.1"

@@ -50,7 +50,7 @@ ok('apply 注册工具', !!def);
 ok('apply 注册投影', !!proj);
 ok('无注册告警', warnings.length === 0, warnings);
 ok('工具名', def?.name === 'what_subagents_are_doing', def?.name);
-ok('投影 key', proj?.key === 'whatsubagentsdoingnow', proj?.key);
+ok('投影 key', proj?.key === 'what-sub-agents-doing-now', proj?.key);
 ok('stateVersion 是非负整数', Number.isInteger(proj?.stateVersion) && proj.stateVersion >= 0);
 ok('host-only（无 wire）', proj?.wire === undefined);
 ok('inject 齐全', JSON.stringify(m.inject) === JSON.stringify(['tools','subagents','agents','sessions','sessionProjections']));

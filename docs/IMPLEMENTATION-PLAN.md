@@ -1,4 +1,4 @@
-# whatsubagentsdoingnow — 实现方案
+# what-sub-agents-doing-now — 实现方案
 
 > 状态：**设计稿**（未写代码）
 > 目标：让主代理不必轮询、不必猜，直接看到每个子代理"此刻在干什么"。
@@ -85,7 +85,7 @@ listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<Subagent
 
 ```js
 ctx.sessionProjections.register({
-  key: 'whatsubagentsdoingnow',
+  key: 'what-sub-agents-doing-now',
   stateVersion: 1,
   init: () => ({ narration: [], lastTool: undefined, steps: 0, lastAt: 0 }),
   apply: (state, event) => fold(state, event),
@@ -251,7 +251,7 @@ try {
 
 按 `dsh-dev-sandbox` 规范：
 
-- 沙箱 profile：`sb-whatsubagentsdoingnow`
+- 沙箱 profile：`sb-what-sub-agents-doing-now`
 - 端口：`3081` 起（避开主力 59274）
 - `link:` 挂载，改代码重启即生效
 - **绝不碰主力 profile `desktop`**
@@ -301,7 +301,7 @@ not registered   [HIT ]   ← 只是 stateOf 的常规分支
 throw new Error(`session projection key ${...} is already registered at stateVersion ${...}; refusing to share it with stateVersion ${...}`)
 ```
 
-本插件独占 `whatsubagentsdoingnow` 这个 key，不会撞。
+本插件独占 `what-sub-agents-doing-now` 这个 key，不会撞。
 
 ### 6.1 备选路径（若投影方案在迁移/升级中失效）
 
@@ -335,7 +335,7 @@ const records = await ctx.sessionQuery.filterEvents(childId, [
 | 2 | 建仓 + `package.json` + peerDependencies | 骨架 |
 | 3 | 实现投影单元 `fold()` + 单测 | 纯函数，可离线测 |
 | 4 | 实现工具 `execute()` | 主体 |
-| 5 | 建沙箱 `sb-whatsubagentsdoingnow`，`link:` 挂载 | 隔离环境 |
+| 5 | 建沙箱 `sb-what-sub-agents-doing-now`，`link:` 挂载 | 隔离环境 |
 | 6 | headless 冒烟：加载 + 工具注册 | 不崩即通过 |
 | 7 | 真实子代理会话验证（造一个长任务） | 端到端 |
 | 8 | 文档 + 交用户决定是否进主力 | 交付 |

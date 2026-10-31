@@ -1,4 +1,4 @@
-# whatsubagentsdoingnow
+# what-sub-agents-doing-now
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
@@ -69,7 +69,7 @@ enum can express that.
 ## 安装 / Install
 
 ```sh
-dsh plugin --profile <profile> add file:/path/to/whatsubagentsdoingnow
+dsh plugin --profile <profile> add file:/path/to/what-sub-agents-doing-now
 ```
 
 或者走 DSH 的「设置 → 插件」管理器。装完需要重启 DSH。
@@ -132,8 +132,8 @@ Exact count of notes added since the previous look.
 ## 配置 / Configuration
 
 ```yaml
-- id: whatsubagentsdoingnow
-  name: whatsubagentsdoingnow
+- id: what-sub-agents-doing-now
+  name: what-sub-agents-doing-now
   config:
     stuckMs: 120000   # 多久没动静标成 possibly-stuck，默认 120000（2 分钟）
 ```
@@ -238,7 +238,7 @@ enforced by the runtime ring buffer (200 entries) rather than the schema.
 ### 装上但工具不出现 / Installed but the tool does not appear
 
 ```sh
-dsh plugin --profile <profile> list | grep whatsubagentsdoingnow
+dsh plugin --profile <profile> list | grep what-sub-agents-doing-now
 ```
 
 确认在列表里后重启 DSH。如果重启后仍看不到，看启动时的 stderr 是否有

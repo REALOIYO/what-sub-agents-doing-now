@@ -169,7 +169,7 @@ async execute(args, exec) {
 
 按 4.3 落地即可。真正需要判断的是**要不要在同一仓库**：
 
-- 同一个仓库：语义连贯（"看" + "说"），但插件名 `whatsubagentsdoingnow` 只覆盖"看"
+- 同一个仓库：语义连贯（"看" + "说"），但插件名 `what-sub-agents-doing-now` 只覆盖"看"
 - 分仓库：职责清晰，但要维护两个插件
 
 倾向同仓库，用前缀区分：`what_subagents_are_doing`（看）/ `subagent_*`（说）。
