@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-10-31
+
+Two features that both address the same failure: a parent agent reading a
+subagent's state wrong.
+
+1. **Finished children keep their closing message.** Settling unloads the child's
+   session, so its narration vanished and every finished child collapsed into a
+   bare "session not resident in memory" line. The settlement notice still lands
+   in the *parent* session carrying the closing text; the projection folds it
+   into a bounded `settled` list.
+2. **Termination reason.** Finished, truncated, errored, and aborted children all
+   looked identical. `turn/end` carries the difference; it now surfaces as
+   `stopReason`, with a `sessionQuery` fallback for unloaded sessions.
+
+Also: `buildRow` null-safety fix, tool-description trigger wording, `stateVersion`
+1 → 3.
+
 ## [Unreleased]
 
 ### Added
