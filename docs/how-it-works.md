@@ -431,6 +431,32 @@ filesystem is itself the progress signal, this plugin is redundant. It earns its
 keep on work that leaves no useful filesystem trace — reasoning, research, or
 repeated edits to one file.
 
+### 上位问题：子代理根本不说话 / The upstream issue: children do not narrate
+
+即使插件工作正常，也解决不了一个更前置的问题：**子代理可能压根不写旁白。**
+
+实测过真实的子代理 session：1.3–5.3 步才产生一条旁白，最差的情况是
+32 步 / 6 条；有一次连续 15 个 `read_image` 调用，一句文字都没有。
+
+根因在 `dsh-tool-subagent` 注入的系统提示词里——它只说
+"Start independent delegations with `subagent` together in one assistant
+message and continue useful work while they run"，**没有任何要求它汇报进度**。
+
+这不只是本机现象。上游
+[#11609](https://github.com/deepseek-ai/deepseek-harness/discussions/11609)
+报告的正是同一件事："模型一路思考 → 跑命令 → 思考 → 跑命令，
+插队问它什么也很少回复，完全不理人"。
+
+所以旁白是**被提示词要求出来的**，不是插件生成的。想让子代理说话，得靠
+任务书或系统提示词明确约定；插件只能如实回传它说了什么，不能替它说。
+
+Even when the plugin works, a more basic problem remains: **the child may not
+narrate at all.** Measured on real sessions: one note per 1.3–5.3 steps, worst
+case 32 steps / 6 notes, and once 15 consecutive `read_image` calls with zero
+text. The root cause is the injected subagent prompt — it asks for delegation
+but never for progress reporting. Upstream #11609 reports the same thing. So
+narration is prompted, not generated; the plugin can only relay what was said.
+
 ---
 
 ## 参考 / References
@@ -441,6 +467,18 @@ zstd 读 session 日志。环境为 DSH desktop `0.2.1-rc.5`、profile `desktop`
 
 上游 Discussions（均截至 0.2.1-rc.5 无官方修复）：
 
+- [#6216](https://github.com/deepseek-ai/deepseek-harness/discussions/6216)
+  — `list_agents` 只有 `[running]`，健康在跑与卡死无法区分
+- [#10770](https://github.com/deepseek-ai/deepseek-harness/discussions/10770)
+  — Agent Teams 成员状态缺进展信号：无最后活动时间、无心跳、`failed` 不含原因
+- [#8570](https://github.com/deepseek-ai/deepseek-harness/discussions/8570)
+  — 子代理 outcome 丢掉 turn-end 错误细节，429 / 额度失败不透明
+- [#8319](https://github.com/deepseek-ai/deepseek-harness/discussions/8319)
+  — 母轮答完后仍在跑的后台子代理，UI 上无可见指示
+- [#8643](https://github.com/deepseek-ai/deepseek-harness/discussions/8643)
+  — 并行委派缺 join 原语，主模型在子代理返回前就下结论
+- [#11609](https://github.com/deepseek-ai/deepseek-harness/discussions/11609)
+  — 模型一路埋头干不和人交互，看不出在干什么
 - [#4909](https://github.com/deepseek-ai/deepseek-harness/discussions/4909)
   — 生命周期交接契约缺失，父代理销毁时子代理被孤立
 - [#5360](https://github.com/deepseek-ai/deepseek-harness/discussions/5360)

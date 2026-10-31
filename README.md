@@ -66,12 +66,15 @@ function statusOf(agents, id) {
 进度信息**一直都在**——子代理每一步都会在 session 里留下自己的旁白。
 问题不是数据不存在，而是**没有任何官方接口把它暴露出来**：
 
-- **状态只有二值。** `agents.get(id).status` 只返回 `running` / `inactive`，
-  没有任何"完成了没有""怎么结束的"字段。
+- **状态只有二值，没有"最后活动时间"。** `list_agents` 给的是 `phase` 叠加
+  当前 turn 活动，`inactive` 明确表示"当前无 turn 执行"，而非任务完成。
+  于是**"已停滞"和"空闲待命"在接口上不可区分**——没有心跳、没有最后活动时间。
 - **进度没有接口。** session 里存着完整的旁白，但没有官方工具能把它读出来给
-  父代理看。想拿到只能自己写插件。
-- **结算通知不带结果。** 子代理结束时父会话会收到一条 `agent/inbox/spliced`，
-  但它只带 `kind` / `form` / `summary` / `senderSessionId`，没有结构化结果字段。
+  父代理看。
+- **结算通知不带结果细节。** 子代理结束时父会话收到 `agent/inbox/spliced`，
+  只带 `kind` / `form` / `summary` / `senderSessionId`。
+  `subagent` 工具返回的 `stopReason` 也把 turn-end 的 `message` / `detail` /
+  `status` / `code` 全丢了，导致 **429 和额度失败都是不透明的**。
 
 所以父代理**只能**：要么轮询一个信息量极低的状态，要么干等。
 
@@ -79,31 +82,47 @@ function statusOf(agents, id) {
 它只是把已经存在的东西读出来、拼成父代理能直接用的样子。
 
 The data was always there. There is simply no official interface that surfaces
-it: status is binary, narration has no accessor, and the settlement notice
-carries no structured result. This plugin fills that gap without depending on
-any upstream change — it only reads what already exists.
+it: status is binary with no last-activity age, narration has no accessor, and
+the settlement path discards the error detail. This plugin fills that gap
+without depending on any upstream change.
 
-### 上游已经报告过 / Upstream reports
+### 上游报告过什么 / Upstream reports
 
-这不是只有我们遇到的问题。DSH 官方仓库的 Discussions 里已经有三条记录，
-截至 0.2.1-rc.5 仍无官方修复：
+这不是只有我们遇到的问题。DSH 官方仓库的 Discussions 里，与
+「父代理看不见子代理」直接相关的记录至少有这些，截至 0.2.1-rc.5 均无官方修复：
 
 | Discussion | 内容 |
 |---|---|
-| [#5360](https://github.com/deepseek-ai/deepseek-harness/discussions/5360) | 后台 `subagent` 停轮时不发完成通知，父代理只能轮询 `list_agents` |
-| [#1202](https://github.com/deepseek-ai/deepseek-harness/discussions/1202) | 失败的子代理在 Web GUI 里仍显示为运行中，没有终态、也无法清除 |
+| [#6216](https://github.com/deepseek-ai/deepseek-harness/discussions/6216) | `list_agents` 只有 `[running]`，健康在跑与卡死在接口上无法区分 |
+| [#10770](https://github.com/deepseek-ai/deepseek-harness/discussions/10770) | Agent Teams 成员状态缺进展信号：无最后活动时间、无心跳、`failed` 不含原因 |
+| [#5360](https://github.com/deepseek-ai/deepseek-harness/discussions/5360) | 后台 `subagent` 停轮不发完成通知，父代理只能轮询 `list_agents` |
+| [#8319](https://github.com/deepseek-ai/deepseek-harness/discussions/8319) | 母轮答完后仍在跑的后台子代理，UI 上没有任何可见指示 |
+| [#8570](https://github.com/deepseek-ai/deepseek-harness/discussions/8570) | 子代理 outcome 丢掉 turn-end 错误细节，429 / 额度失败不透明 |
+| [#8643](https://github.com/deepseek-ai/deepseek-harness/discussions/8643) | 并行委派缺 join 原语：主模型在子代理返回前就下结论 |
+| [#1202](https://github.com/deepseek-ai/deepseek-harness/discussions/1202) | 失败的子代理在 Web GUI 里仍显示运行中，无终态、无法清除 |
 | [#4909](https://github.com/deepseek-ai/deepseek-harness/discussions/4909) | 生命周期交接契约缺失：父代理销毁时子代理被孤立 |
+| [#11609](https://github.com/deepseek-ai/deepseek-harness/discussions/11609) | 模型一路"埋头干"，过程中几乎不和人交互，看不出它在干什么 |
 
-外加一条与工具命名相关的 [#7642](https://github.com/deepseek-ai/deepseek-harness/discussions/7642)
-（Agent Teams 未禁用 subagent，导致 `list_agents` / `send_message` 找不到子代理），
-本插件为此刻意不遮蔽上游工具名，详见
-[`docs/how-it-works.md`](./docs/how-it-works.md#为什么不遮蔽-list_agents--upstream-list_agents-is-not-shadowed)。
+**这些报告的共同点是同一件事：父代理拿不到子代理的真实状态。**
 
-**这些报告的共同点是：父代理拿不到子代理的真实状态。** 官方还没修，
-所以我们自己先补上。
+其中 [#6216](https://github.com/deepseek-ai/deepseek-harness/discussions/6216)
+说得很直接：
 
-All three describe the same gap: the parent cannot see the child's real state.
-Not fixed upstream, so this plugin fills it.
+> A background subagent emits nothing to its parent between dispatch and final
+> message… the parent's entire liveness view is `list_agents`' status word plus
+> `job_output`'s **`(no new output)`**.
+> **These are exactly what a healthy, working child looks like. They are also
+> exactly what a stalled child looks like.** The model on the parent seat has no
+> data to tell the two apart — and in practice it fills the gap with fabricated
+> elapsed times.
+
+官方还没修，所以我们先补上。
+
+The common thread across all of them: the parent cannot see the child's real
+state. #6216 puts it plainly — the parent's entire liveness view is a status word
+plus `(no new output)`, which is exactly what both a healthy child and a stalled
+one look like. **Not fixed upstream, so this plugin fills it.**
+
 
 ---
 
