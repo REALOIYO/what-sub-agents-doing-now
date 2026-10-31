@@ -1,0 +1,39 @@
+{
+  "name": "whatsubagentsdoingnow",
+  "version": "0.1.0",
+  "description": "让主代理看到每个子代理此刻在干什么：回传子代理自己写的进度旁白，而不只是 running/inactive。纯只读，不遮蔽上游工具，不改任何会话。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "subagent",
+    "observability",
+    "progress"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

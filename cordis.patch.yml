@@ -1,0 +1,8 @@
+# whatsubagentsdoingnow：bundle patch 层。
+#
+# 安装到 profile 后，这一行把插件挂进组合配置。
+# 注意：不要与 profile 自己 cordis.patch.yml 里的同名 insert 重复，
+# 双挂载会在启动时报 duplicate loader entry id。
+- insert:
+    - id: whatsubagentsdoingnow
+      name: whatsubagentsdoingnow
