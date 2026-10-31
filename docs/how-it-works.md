@@ -21,24 +21,30 @@
 
 ## 整体结构 / Architecture
 
-六个文件，职责单一，只有 `index.js` 碰 DSH 的 ctx：
+六个文件，职责单一。**只有两个文件完全不碰 DSH**：`projection.js` 和
+`paginate.js`——它们可以从 `node` 直接跑测试，不需要任何 ctx。
 
-| 文件 | 职责 | 能否脱离 DSH 测试 |
+其余四个都要 ctx，但依赖深度不同：
+
+| 文件 | 职责 | 依赖 DSH |
 |---|---|---|
-| `lib/projection.js` | 纯函数：把 session 事件折成状态 | ✅ 可以 |
-| `lib/paginate.js` | 纯逻辑：分页、游标、状态判定 | ✅ 可以 |
-| `lib/collect.js` | 编排：目录 + 投影 → 可读的行 | 部分（依赖 ctx 形状） |
-| `lib/projection-registry.js` | 注册投影、读取状态 | 否 |
-| `lib/tool.js` | 注册工具、渲染文本 | 否 |
-| `lib/index.js` | 插件入口、配置校验 | 否 |
+| `lib/projection.js` | 纯函数：把 session 事件折成状态 | 无 |
+| `lib/paginate.js` | 纯逻辑：分页、游标、状态判定 | 无 |
+| `lib/collect.js` | 编排：目录 + 投影 → 可读的行 | 只读 `ctx.subagents` / `ctx.agents` |
+| `lib/projection-registry.js` | 注册投影、读取状态 | `ctx.sessionProjections` / `ctx.sessions` |
+| `lib/tool.js` | 注册工具、渲染文本 | `ctx.tools.register` |
+| `lib/index.js` | 插件入口、配置校验 | 全部 |
+
+`collect.js` 虽然是编排层，但它的输入是普通对象（catalog entry + 投影状态），
+所以 `buildRow` 那部分能用假 ctx 测——测试里就是这么做的。
 
 **设计原则：把能做成纯函数的都做成纯函数。** 因为纯函数可以用 `node` 直接跑，
 不需要启动 Electron、不需要读 182 MB 的 `app.asar`。这让 51 项断言能在
 1 秒内跑完，而不是每改一行都重启一次 DSH。
 
-Six files with one responsibility each. Only `index.js` touches DSH's `ctx`.
-Everything that could be a pure function is one, so tests run in a second under
-plain `node` instead of requiring an Electron boot.
+Two files never touch DSH at all. The other four need `ctx` at different depths:
+`collect.js` only reads the subagent/agent registries, so its `buildRow` is
+testable with a fake context — which is what the tests do.
 
 ---
 
@@ -394,11 +400,19 @@ ring buffer instead. Note `parameters` is not asserted at all — only
 投影 checkpoint 存的是 `(sessionId, key, ver, seq, val)`。
 
 **读了源码才知道的关键点**：`ver` 与当前 `stateVersion` 不匹配时，
-那一行在**读取时被直接丢弃**，注释原话是 "never a migration"。
+那一行被视为 unusable，**直接丢弃并从 `init` 重折**，不会做任何迁移。
+
+源码注释原话：
+
+> A row is usable iff its `ver` matches the live unit's `stateVersion` …
+> an unusable row is discarded and its key refolds from `init`
+
+对应代码：
 
 ```js
-// dsh-session-projection
-const usable = row !== undefined && row.ver === def.stateVersion;
+// dsh-session-projection, restore()
+const usable = row !== void 0 && row.ver === def.stateVersion
+  && row.seq >= beforeBase && row.seq <= endSeq;
 let state = usable ? def.stateSchema.parse(row.val) : def.init(header, inheritedEventCount);
 ```
 
@@ -406,7 +420,10 @@ let state = usable ? def.stateSchema.parse(row.val) : def.init(header, inherited
 这既是它的用处（改了折叠语义后自动重建），也是它的风险（你以为数据还在，
 其实被丢了）。
 
-历史：
+还有个细节：如果丢弃时 `baseSeq > 0`（不是从头读），会**抛错**要求调用方
+从 seq 0 重读，而不是悄悄给出一份不完整的状态。
+
+History:
 
 | 版本 | 变更 |
 |---|---|
@@ -414,9 +431,10 @@ let state = usable ? def.stateSchema.parse(row.val) : def.init(header, inherited
 | 2 | 新增 `settled` |
 | 3 | 移除 `stopReason`（0.2.1 回滚） |
 
-Bumping `stateVersion` does not migrate: the row is discarded at read time and
-the state re-folds from `init`. Useful when fold semantics change, dangerous if
-you assume old data survives.
+Bumping `stateVersion` does not migrate: the row is discarded and the key
+refolds from `init`. Useful when fold semantics change, dangerous if you assume
+old data survives. When the discard happens at `baseSeq > 0` it throws instead of
+returning a silently incomplete state.
 
 ---
 
@@ -430,7 +448,7 @@ you assume old data survives.
 | 2 | 记错工具名 | 找不到工具，以为没装 | 已在 description 第一行写死名字 |
 | 3 | 觉得不值 | 宁可 `ls` 看文件 | **未解**，见下 |
 | 4 | 描述被读反 | 防轮询的话被读成"别查" | 已改成有边界的许可 |
-| 5 | 服务不存在 | 依赖的功能静默降级 | 已移除此类依赖（见终止原因一节） |
+| 5 | 前提没验证 | 基于错误的技术假设做设计 | **踩过**，见终止原因一节 |
 
 ### 第 3 条：真的没解 / The unsolved one
 
