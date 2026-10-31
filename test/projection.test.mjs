@@ -19,7 +19,7 @@ import {
   extractSettlement,
   applyEvent,
 } from '../lib/projection.js';
-import { pageNarration, clampLimit, countSince, SeenCursor, DEFAULT_LIMIT, MAX_LIMIT, classifyState } from '../lib/paginate.js';
+import { pageNarration, clampLimit, countSince, SeenCursor, DEFAULT_LIMIT, MAX_LIMIT, classifyState, detectSilence } from '../lib/paginate.js';
 import { buildRow } from '../lib/collect.js';
 
 let passed = 0;
@@ -213,22 +213,54 @@ console.log('\n=== SeenCursor ===');
 test('首次读为 undefined，写过之后能读', () => {
   const c = new SeenCursor();
   assert.equal(c.read('p', 'c1'), undefined);
-  c.write('p', 'c1', 42);
-  assert.equal(c.read('p', 'c1'), 42);
+  c.write('p', 'c1', { seq: 42, steps: 7, narrationTotal: 3 });
+  assert.deepEqual(c.read('p', 'c1'), { seq: 42, steps: 7, narrationTotal: 3 });
 });
 test('不同子代理互不干扰（多子代理并发关键项）', () => {
   const c = new SeenCursor();
-  c.write('p', 'a', 10);
-  c.write('p', 'b', 99);
-  assert.equal(c.read('p', 'a'), 10);
-  assert.equal(c.read('p', 'b'), 99);
+  c.write('p', 'a', { seq: 10, steps: 1, narrationTotal: 1 });
+  c.write('p', 'b', { seq: 99, steps: 2, narrationTotal: 2 });
+  assert.equal(c.read('p', 'a').seq, 10);
+  assert.equal(c.read('p', 'b').seq, 99);
 });
 test('不同父代理看同一子代理互不干扰', () => {
   const c = new SeenCursor();
-  c.write('p1', 'x', 5);
-  c.write('p2', 'x', 77);
-  assert.equal(c.read('p1', 'x'), 5);
-  assert.equal(c.read('p2', 'x'), 77);
+  c.write('p1', 'x', { seq: 5, steps: 1, narrationTotal: 0 });
+  c.write('p2', 'x', { seq: 77, steps: 9, narrationTotal: 4 });
+  assert.equal(c.read('p1', 'x').seq, 5);
+  assert.equal(c.read('p2', 'x').seq, 77);
+});
+
+console.log('\n=== detectSilence（闷头干活不说话）===');
+test('走 8 步零旁白 → 判定为沉默', () => {
+  const r = detectSilence(8, 0);
+  assert.equal(r.silent, true);
+  assert.equal(r.steps, 8);
+  assert.equal(r.notes, 0);
+});
+test('走 3 步零旁白 → 步数不够，不算沉默', () => {
+  const r = detectSilence(3, 0);
+  assert.equal(r.silent, false);
+});
+test('走 8 步写了 1 条 → 不算沉默', () => {
+  const r = detectSilence(8, 1);
+  assert.equal(r.silent, false);
+  assert.equal(r.notes, 1);
+});
+test('没走路（0 步）→ undefined，没什么可说的', () => {
+  assert.equal(detectSilence(0, 0), undefined);
+});
+test('负数步数不崩', () => {
+  assert.equal(detectSilence(-3, 0), undefined);
+});
+test('NaN 输入返回 undefined', () => {
+  assert.equal(detectSilence(NaN, 0), undefined);
+});
+test('边界：正好 5 步零旁白 → 算沉默', () => {
+  assert.equal(detectSilence(5, 0).silent, true);
+});
+test('边界：4 步零旁白 → 不算', () => {
+  assert.equal(detectSilence(4, 0).silent, false);
 });
 
 console.log('\n=== classifyState ===');

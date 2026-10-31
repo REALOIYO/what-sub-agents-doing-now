@@ -282,6 +282,8 @@ what_subagents_are_doing({
 | `narration` | 它自己写的进度旁白（最近的几条） |
 | `narrationTotal` / `narrationOmitted` | 一共写了多少条 / 这次没给多少条 |
 | `narrationSinceLastLook` | 自你上次查看后新增几条 |
+| `stepsSinceLastLook` | 自你上次查看后走了几步 |
+| `silentSteps` | 走了这么多步但没写旁白（闷头干活） |
 | `oldestSeq` | 本页最早那条的 seq，用于 `before` 往回翻 |
 | `settled` / `settledSecondsAgo` | 已结束子代理的收尾语，和它距今多久 |
 | `note` | 读不到数据时的显式说明 |
@@ -324,6 +326,17 @@ JSON. `parent` and `depth` only appear under `scope: 'descendants'`.
 ```
 (+5 since you last looked)
 ```
+
+如果它走了不少步却没写旁白，会明说：
+
+```
+quiet: 13 more steps since you last looked, but no new progress notes
+       — it is working without reporting
+```
+
+这条是为了解决"它明明在跑，但一句话不说，父代理完全不知道它在干什么"。
+判定门槛是两次查看之间 ≥5 步且零旁白。低于这个数不报，因为正常的汇报节奏
+本来就是两三个步一条，偶尔漏一条不算问题。
 
 ### 已结束的子代理保留最后那句话 / Finished children keep their closing message
 

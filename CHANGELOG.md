@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] — 2026-10-31
+
+### Added
+
+- **`silentSteps` — detect a child that works without reporting.** A child can
+  accumulate steps while writing no narration at all, which reads as healthy
+  (`running`, `idle 0s`) but leaves the parent with no idea what it is doing.
+  Between two consecutive looks the plugin now compares step count against
+  narration count and says so when at least 5 steps passed with zero new notes:
+
+  ```
+  quiet: 13 more steps since you last looked, but no new progress notes
+         — it is working without reporting
+  ```
+
+  The threshold is 5 because normal reporting runs about one note per 2–3 steps;
+  a single missed note is not a signal. `SeenCursor` now stores
+  `{seq, steps, narrationTotal}` instead of a bare seq, which is what makes the
+  delta computable. This describes behaviour, not failure — narration is the
+  child's choice, and the row still reports the raw counts.
+
+- **`(+0 since you last looked)` is no longer printed.** When nothing is new the
+  quiet line already says it; the zero line was noise.
+
 ## [0.2.1] — 2026-10-31
 
 ### Removed
