@@ -40,7 +40,7 @@ Install and it works — no config, no prompt changes.
 
 ---
 
-## 解决什么问题 / The problem
+## 问题 / The problem
 
 用 `subagent` 派活，父代理只拿到一个二值状态：
 
@@ -61,8 +61,49 @@ function statusOf(agents, id) {
 
 分不出来，就只能反复轮询，或者瞎猜。
 
-That one word covers four different situations. The parent cannot tell them
-apart, so it polls in a loop or guesses.
+### DSH 官方没有做的事 / What DSH does not provide
+
+进度信息**一直都在**——子代理每一步都会在 session 里留下自己的旁白。
+问题不是数据不存在，而是**没有任何官方接口把它暴露出来**：
+
+- **状态只有二值。** `agents.get(id).status` 只返回 `running` / `inactive`，
+  没有任何"完成了没有""怎么结束的"字段。
+- **进度没有接口。** session 里存着完整的旁白，但没有官方工具能把它读出来给
+  父代理看。想拿到只能自己写插件。
+- **结算通知不带结果。** 子代理结束时父会话会收到一条 `agent/inbox/spliced`，
+  但它只带 `kind` / `form` / `summary` / `senderSessionId`，没有结构化结果字段。
+
+所以父代理**只能**：要么轮询一个信息量极低的状态，要么干等。
+
+**这个插件补的就是这一块。** 它不依赖上游修任何东西——数据本来就在那里，
+它只是把已经存在的东西读出来、拼成父代理能直接用的样子。
+
+The data was always there. There is simply no official interface that surfaces
+it: status is binary, narration has no accessor, and the settlement notice
+carries no structured result. This plugin fills that gap without depending on
+any upstream change — it only reads what already exists.
+
+### 上游已经报告过 / Upstream reports
+
+这不是只有我们遇到的问题。DSH 官方仓库的 Discussions 里已经有三条记录，
+截至 0.2.1-rc.5 仍无官方修复：
+
+| Discussion | 内容 |
+|---|---|
+| [#5360](https://github.com/deepseek-ai/deepseek-harness/discussions/5360) | 后台 `subagent` 停轮时不发完成通知，父代理只能轮询 `list_agents` |
+| [#1202](https://github.com/deepseek-ai/deepseek-harness/discussions/1202) | 失败的子代理在 Web GUI 里仍显示为运行中，没有终态、也无法清除 |
+| [#4909](https://github.com/deepseek-ai/deepseek-harness/discussions/4909) | 生命周期交接契约缺失：父代理销毁时子代理被孤立 |
+
+外加一条与工具命名相关的 [#7642](https://github.com/deepseek-ai/deepseek-harness/discussions/7642)
+（Agent Teams 未禁用 subagent，导致 `list_agents` / `send_message` 找不到子代理），
+本插件为此刻意不遮蔽上游工具名，详见
+[`docs/how-it-works.md`](./docs/how-it-works.md#为什么不遮蔽-list_agents--upstream-list_agents-is-not-shadowed)。
+
+**这些报告的共同点是：父代理拿不到子代理的真实状态。** 官方还没修，
+所以我们自己先补上。
+
+All three describe the same gap: the parent cannot see the child's real state.
+Not fixed upstream, so this plugin fills it.
 
 ---
 
@@ -311,13 +352,6 @@ Implementation notes, design tradeoffs, and one reverted feature:
 
 DSH 的 `agents.get(id).status` 只有 `running` / `inactive`。子代理的进度信息
 其实一直在它的 session 里，只是没有任何工具把它暴露出来。
-
-上游有几个相关 issue，截至 0.2.1-rc.5 仍全部开放、无官方回复：
-
-- #4909 — 子代理生命周期交接
-- #5360 — parked 状态无通知
-- #1202 — 无 terminal-outcome 字段
-- #7642 — Agent Teams 遮蔽 subagent 工具
 
 这个插件不依赖上游修任何东西。它只是把已经存在的数据读出来。
 

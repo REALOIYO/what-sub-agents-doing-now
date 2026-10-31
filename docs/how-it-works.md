@@ -294,14 +294,17 @@ the outcome" case.
 1. `dsh-tools` 里同名注册直接抛 `tool ... is already registered`
 2. 走 per-agent scope 遮蔽会让模型同时拿到两套语义冲突的工具
 
-第 2 条不是猜测。上游 issue #7642 记录了实证后果：Agent Teams 注册了
-`send_message` / `list_agents` / `interrupt_agent` 到 agent scope，遮蔽了
-全局版本；模型按旧的参数形状调用，报 `active teammate not found`。
+第 2 条不是猜测。这是本机实测的：Agent Teams 把
+`send_message` / `list_agents` / `interrupt_agent` 注册到 agent scope，
+遮蔽了全局版本；模型按旧的参数形状调用，报 `active teammate not found`。
+上游 [Discussion #7642](https://github.com/deepseek-ai/deepseek-harness/discussions/7642)
+记录了同一问题的另一面。
 
-详见 [`docs/send-message-shadowing.md`](./send-message-shadowing.md)。
+详见 [`send-message-shadowing.md`](./send-message-shadowing.md)。
 
 Two reasons: same-name registration throws, and per-agent scoping would hand the
-model two conflicting toolsets. Issue #7642 is the empirical case.
+model two conflicting toolsets. The second is measured here, not inferred; see
+`send-message-shadowing.md` and upstream Discussion #7642.
 
 ---
 
@@ -432,11 +435,25 @@ repeated edits to one file.
 
 ## 参考 / References
 
-上游 issue，全部仍开放、无官方回复：
+本文档里的技术结论都来自**本机实测**：直接解析 asar 头取出源码，直接解多帧
+zstd 读 session 日志。环境为 DSH desktop `0.2.1-rc.5`、profile `desktop`，
+代码在 `F:\dsh\resources\app.asar` 内部。
 
-- #4909 — 子代理生命周期交接
-- #5360 — parked 状态无通知
-- #1202 — 无 terminal-outcome 字段
-- #7642 — Agent Teams 遮蔽 subagent 工具
+上游 Discussions（均截至 0.2.1-rc.5 无官方修复）：
 
-Upstream issues, all open with no official response as of 0.2.1-rc.5.
+- [#4909](https://github.com/deepseek-ai/deepseek-harness/discussions/4909)
+  — 生命周期交接契约缺失，父代理销毁时子代理被孤立
+- [#5360](https://github.com/deepseek-ai/deepseek-harness/discussions/5360)
+  — 后台 subagent 停轮不发完成通知，父代理只能轮询
+- [#1202](https://github.com/deepseek-ai/deepseek-harness/discussions/1202)
+  — 失败子代理在 GUI 里仍显示运行中，无终态
+- [#7642](https://github.com/deepseek-ai/deepseek-harness/discussions/7642)
+  — Agent Teams 未禁用 subagent，工具找不到子代理
+
+Technical claims here were measured locally: source read by parsing the asar
+header, session logs by splitting multi-frame zstd. DSH desktop `0.2.1-rc.5`.
+
+> 注意：该仓库的 **issues 数为 0**，上述内容都在 **Discussions** 里，
+> 路径是 `discussions/<n>` 而非 `issues/<n>`。
+>
+> The repo has zero *issues*; these live under *Discussions*.
