@@ -19,20 +19,29 @@
 
 ## 这是什么 / What it is
 
-派出去的子代理，你只能看到两个状态词。这个插件让你能看到它**说过的话**。
+**用 `subagent` 或 `subagent_fork` 派出去的子代理，`list_agents` 看不见。**
+父代理于是以为它不见了，重新派一个——而它其实还在跑。
+
+这个插件看得见。而且看得见的不只是"还活着"，还有它走了几步、最后调了什么、
+说过什么。
 
 ```js
-// 以前 / before
-child-a: inactive
+// list_agents / before
+[{"target":"lead","role":"lead","status":"running"}]
+// 就这么多。子代理不在里面。
 
-// 现在 / now
-child-a [running] — 做 2020 全国 III 卷文科数学
-    42 steps, last tool: write, idle 0s
-    • 核对第 11 题选项的系数（长图中这几行只显示根号）
-    • 数学完成，共 23 题
+// what_subagents_are_doing / now
+b147d0d8 [running] — 核对第三章数据表
+    11 steps, last tool: read, idle 0s
+    • 读完 14 页，发现 3 处数值和正文对不上，正在逐条核对。
 ```
 
-一眼就知道：**它在核对选项系数，然后说做完了。**
+一眼就知道：**它还在干活，读到了第 14 页，刚发现一处对不上的数据。** 没有丢。
+
+Children created by `subagent` or `subagent_fork` never show up in
+`list_agents`, so the parent concludes they are gone and re-delegates — while
+they are still running. This plugin reads the catalog that does contain them,
+and reports steps, last tool, idle time, and what the child said.
 
 装上就用，不用改配置、不用写提示词。
 
@@ -48,7 +57,46 @@ Install and it works — no config, no prompt changes.
 
 ## 问题 / The problem
 
-用 `subagent` 派活，父代理只拿到一个二值状态：
+### 最要紧的一条：子代理根本不在列表里 / The one that matters most
+
+DSH 有多个派活入口：`subagent`、`subagent_fork`、`spawn_teammate`、`workflow`、
+`ralph`。
+
+**只有 `spawn_teammate` 建出来的 teammate 会被 `list_agents` 认到。**
+
+用 `subagent` / `subagent_fork` 派出去的子代理，`list_agents` 返回的永远只有
+父代理自己：
+
+```json
+[{"target":"lead","role":"lead","status":"running"}]
+```
+
+父代理于是判定"它不见了"，重新派一个。而那个子代理其实还在跑。
+
+同一时刻，本插件看到的是：
+
+```
+494b4fb4 [idle]   — 整理费用明细
+b633ba65 [idle]   — 核对发票抬头
+b147d0d8 [running] — 核对第三章数据表
+                 11 steps, last tool: read, idle 0s
+```
+
+原因不在数据，在**登记的集合不同**：`list_agents` 查的是 Agent Teams 的
+roster，只收 `spawn_teammate` 创建的 durable member；`subagent` /
+`subagent_fork` 走的是另一条路，登记在 subagent 自己的目录里。
+
+**本插件读的是后者，所以看得见。**
+
+Only teammates created by `spawn_teammate` appear in `list_agents`. Children
+created by `subagent` or `subagent_fork` are registered in the subagent's own
+catalog instead, so `list_agents` returns just the parent — and the parent
+concludes the child is gone, then re-delegates. This plugin reads that catalog,
+so it sees them.
+
+### 然后是：看得见之后，粒度还不够 / And then: the granularity
+
+就算 `list_agents` 能看到（teammate 那种），它给的也只是一个状态词。
 
 ```js
 function statusOf(agents, id) {
@@ -66,6 +114,23 @@ function statusOf(agents, id) {
 | 正在等它自己的子代理 | `inactive` |
 
 分不出来，就只能反复轮询，或者瞎猜。
+
+### 覆盖范围 / What it covers
+
+| 派活方式 | `list_agents` | 本插件 |
+|---|---|---|
+| `spawn_teammate` | ✅ 但只有状态词 | ✅ 步数 + 旁白 |
+| `subagent`（spawn） | ❌ 完全不可见 | ✅ |
+| `subagent_fork` | ❌ 完全不可见 | ✅ |
+| `workflow` 的 `agent()` | ❌ | ✅ |
+| `ralph` 的每轮 | ❌ | ✅ |
+
+三条代码路径都汇到 `subagents.startActivation`，登记动作写在它内部的
+`startLocal` 里，所以上面这些方式都会被记录。
+
+All delegation paths funnel through `subagents.startActivation`, and the
+catalog write lives inside its `startLocal`. So every path listed above is
+recorded.
 
 ### DSH 官方没有做的事 / What DSH does not provide
 
@@ -338,18 +403,20 @@ of crashing. When data is unavailable it says so rather than pretending.
 
 ## 已知限制 / Known limits
 
+- **`subagent` 和 `subagent_fork` 已实测**，`workflow` 和 `ralph` **只验证了
+  代码路径**（都走 `startActivation`），没在真实会话里跑过。
 - **嵌套子代理没测过。** 只验证过一层（父 → 子）。`scope: 'descendants'` 转发给
   上游 `listDescendants()`，文档说会递归，但没在真实的孙代理树上验证过。
 - **`image` 和 `reasoning` 按设计跳过。** 只发图片的 step 不产生旁白。
 - **看不到终止原因。** 子代理是被截断、报错还是正常结束，本插件不区分。
-  （试过，已回滚——原因见 [`docs/how-it-works.md`](./docs/how-it-works.md#终止原因试过又撤掉的功能--termination-reason-a-reverted-attempt)）
 - **文件系统比插件更省事时，插件是冗余的。** 如果子代理的产出落盘就能看出进展
   （建文件、写长文档），`ls` 比调这个工具更划算。插件真正不可替代的场景是
   不落盘的工作——推理、分析、调研，或者反复改同一个文件。
 
-Nested subagents untested. Image/reasoning blocks skipped by design. Termination
-reason is not reported (attempted and reverted). When the filesystem already
-reveals progress, this plugin is redundant.
+`subagent` and `subagent_fork` are verified on real sessions. `workflow` and
+`ralph` are verified only at the code-path level. Nested subagents untested.
+Image/reasoning blocks skipped by design. Termination reason is not reported.
+When the filesystem already reveals progress, this plugin is redundant.
 
 ---
 
