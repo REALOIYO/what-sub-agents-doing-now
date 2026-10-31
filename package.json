@@ -1,7 +1,7 @@
 {
   "name": "whatsubagentsdoingnow",
-  "version": "0.1.0",
-  "description": "让主代理看到每个子代理此刻在干什么：回传子代理自己写的进度旁白，而不只是 running/inactive。纯只读，不遮蔽上游工具，不改任何会话。",
+  "version": "0.1.1",
+  "description": "See what each subagent is actually doing: surface the progress notes a child wrote itself, not just running/inactive. Read-only, non-shadowing.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -14,6 +14,7 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
     "CHANGELOG.md",
     "LICENSE",
     "docs"
@@ -22,14 +23,39 @@
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
+    "deepseek",
     "subagent",
+    "subagents",
+    "sub-agent",
+    "agent-observability",
+    "progress",
+    "progress-tracking",
+    "session-projection",
     "observability",
-    "progress"
+    "monitoring",
+    "orchestration",
+    "multi-agent",
+    "ai-agent",
+    "llm",
+    "tool-progress"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/REALOIYO/whatsubagentsdoingnow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/REALOIYO/whatsubagentsdoingnow/issues"
+  },
+  "homepage": "https://github.com/REALOIYO/whatsubagentsdoingnow#readme",
   "engines": {
     "node": ">=22",
     "dsh": ">=0.2.1-rc.1"
+  },
+  "scripts": {
+    "test": "node test/projection.test.mjs",
+    "test:schema": "node test/schema.dsh.mjs",
+    "test:integration": "node test/integration.dsh.mjs"
   },
   "dsh": {
     "bundle": {

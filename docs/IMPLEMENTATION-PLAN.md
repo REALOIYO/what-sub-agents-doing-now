@@ -206,7 +206,7 @@ throw new Error(scope === void 0
 ### 5.3 旁白必须过滤敏感内容
 
 旁白是模型自由文本，可能含：
-- 文件绝对路径（`F:\DSH_workspace\...`）
+- 文件绝对路径
 - API key / token 片段
 - 用户隐私内容
 

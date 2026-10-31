@@ -2,10 +2,29 @@
  * 集成验证：用模拟 ctx 跑完整 apply()，验证投影注册 + 工具注册 + execute 全链路。
  *
  * 必须在 DSH 的 Electron 运行时下跑（需要能读 app.asar 校验 schema）：
- *   "F:/dsh/DeepSeek Harness.exe" test/integration.dsh.mjs
+ *   "<DSH 安装目录>/DeepSeek Harness.exe" test/integration.dsh.mjs <installDir> [repoDir]
+ *
+ * 或设环境变量 DSH_INSTALL。
  */
 
-const m = await import('file:///F:/DSH_workspace_main_dsh/whatsubagentsdoingnow/lib/index.js');
+import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve as resolvePath } from 'node:path';
+
+const [, , installArg, repoArg] = process.argv;
+const installDir = installArg ?? process.env.DSH_INSTALL;
+if (installDir === undefined) {
+  console.error(
+    '缺少 DSH 安装目录。\n'
+    + '  用法: "<DSH exe>" test/integration.dsh.mjs <installDir> [repoDir]\n'
+    + '  或设置环境变量 DSH_INSTALL。',
+  );
+  process.exit(2);
+}
+const repoDir = repoArg ?? resolvePath(dirname(fileURLToPath(import.meta.url)), '..');
+const asarBase = `${installDir.replace(/[/\\]$/, '')}/resources/app.asar/dsh/node_modules/@deepseek-ai`;
+
+const m = await import(pathToFileURL(`${repoDir}/lib/index.js`).href);
 
 let failures = 0;
 function ok(label, cond, extra) {
@@ -115,6 +134,36 @@ m.apply(ctx4, {});
 let threw2 = false;
 try { await tool2.execute({}, {}); } catch { threw2 = true; }
 ok('缺少 exec.agent 时抛错', threw2);
+
+// --- 8) 回归：子代理结束、session 卸载后 narration 必须是数组不是 null ---
+// 实测踩过：子代理跑完 session 被卸载 -> readProgress 返回 undefined
+// -> 旧实现给 narration=null -> DSH 输出校验拒绝
+//    "value[0].narration must be an array"，整个工具调用失败。
+const toolsApi = await import(pathToFileURL(`${asarBase}/dsh-tools/lib/index.js`).href);
+
+const ctxGone = {
+  ...ctx,
+  tools: { register: (d) => { tool2 = d; } },
+  subagents: { listChildren: async () => [{ id: 'gone-1', label: '已结束的子代理', mode: 'continuable' }] },
+  sessions: { get: () => undefined },              // session 已卸载
+  sessionProjections: { register: () => () => {}, stateOf: () => undefined },
+  agents: { get: () => undefined },
+};
+m.apply(ctxGone, {});
+const rowsGone = await tool2.execute({ limit: 6 }, { agent: { id: 'p' } });
+ok('session 卸载后仍返回一行', rowsGone.length === 1);
+ok('narration 是数组', Array.isArray(rowsGone[0].narration), JSON.stringify(rowsGone[0].narration));
+ok('narration 为空数组', rowsGone[0].narration.length === 0);
+ok('附有说明 note', typeof rowsGone[0].note === 'string' && rowsGone[0].note.includes('unavailable'));
+
+// 关键：用 DSH 真实校验器验证输出合法
+const viol = toolsApi.validateJsonSchemaValue(def.output.schema, rowsGone, '');
+ok('输出通过 DSH schema 校验', viol.length === 0, JSON.stringify(viol));
+
+// 渲染也要能跑
+let renderOk = true;
+try { tool2.output.render({}, rowsGone); } catch { renderOk = false; }
+ok('卸载态可正常渲染', renderOk);
 
 console.log('\n总体:', failures === 0 ? 'ALL OK' : `${failures} 项失败`);
 process.exit(failures === 0 ? 0 : 1);

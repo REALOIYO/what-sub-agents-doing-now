@@ -1,38 +1,72 @@
 # Changelog
 
-## 0.1.0 — 2026-10-31
+All notable changes to this project are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
+versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-首个版本。
+## [0.1.1] — 2026-10-31
 
-### 新增
+### Fixed
 
-- `what_subagents_are_doing` 工具：回传每个子代理自己写的进度旁白
-  （`assistant/message` 的 `text` block），而不只是 `running` / `inactive`
-- 三种状态：`running` / `idle` / `possibly-stuck`（启发式），外加 `external`
-- 分页：`limit`（1–50，默认 6）+ `before` 游标往回翻
-- 增量提示：`narrationSinceLastLook` 告诉父代理自上次查看后新增几条
-- 体积提示：`narrationTotal` / `narrationOmitted`，让模型自己决定要不要翻
-- `scope: descendants` 查看整棵子树
+- **Tool call failed after a subagent settled** —
+  `tool "what_subagents_are_doing" returned invalid output:
+  "value[0].narration" must be an array`.
+  When a child finishes, its session is unloaded from memory, so progress becomes
+  unreadable. The old code set `narration: null`, which DSH's output validation
+  rejects because the schema declares an array. It now returns `[]` plus a `note`
+  explaining that the session was unloaded. Regression covered in
+  `test/integration.dsh.mjs` and `test/schema.dsh.mjs`.
 
-### 实现要点
+### Changed
 
-- 旁白走**投影**（`ctx.sessionProjections.register`），不走 `listEvents` 冷读——
-  后者每次解压完整日志，父代理轮询会明显拖慢会话
-- **零第三方依赖**：不 import 任何 `@deepseek-ai/*`，手写标准 JSON Schema。
-  插件从 profile 外加载时裸包名解析不到 `app.asar` 内的 `dsh/node_modules`
-- 工具名与上游 `list_agents` 完全不同，避免同名注册抛错与语义冲突
-- 环形缓冲上限 200 条 / 子代理，单条截断 200 字符；`reasoning` block 一律排除
+- Tests take the DSH install directory as an argument (or `DSH_INSTALL` env var)
+  instead of hard-coding absolute paths, so the repo is portable.
+- README restructured for public consumption; Chinese version moved to
+  `README.zh.md`.
 
-### 安全
+## [0.1.0] — 2026-10-31
 
-- 纯只读：不写 session、不 `append` 事件、不调 `send_message` / `interrupt_agent`
-- 目录读取失败时显式抛错，不返回空数组
-- 会话不在内存时返回 `narration: null` + `note`，不假装"没说过话"
-- 投影注册失败不致命，降级为 `progress unavailable`，绝不让 profile 起不来
+### Added
 
-### 验证
+- `what_subagents_are_doing` tool: returns the progress notes each subagent wrote
+  itself (the `text` blocks of `assistant/message`), instead of only
+  `running` / `inactive`
+- Four states: `running`, `idle`, `possibly-stuck` (heuristic), plus `external`
+- Paging: `limit` (1–50, default 6) and a `before` cursor to look further back
+- Incremental hint: `narrationSinceLastLook` counts notes added since the previous
+  look by the same parent
+- Volume hints: `narrationTotal` / `narrationOmitted` let the model decide whether
+  to page back
+- `scope: descendants` for whole-subtree inspection
 
-- 纯逻辑单测 33 项（`test/projection.test.mjs`）
-- schema 校验 10 项，用 DSH 真实 `assertSupportedJsonSchema` / `validateJsonSchemaValue`
-  （`test/schema.dsh.mjs`）
-- 集成测试 24 项（`test/integration.dsh.mjs`）
+### Implementation
+
+- Narration is read through a **projection unit**
+  (`ctx.sessionProjections.register`), never through a full log read — the latter
+  decompresses the entire session on every poll
+- **Zero third-party dependencies**: no `@deepseek-ai/*` imports, standard JSON
+  Schema written by hand. Plugins loaded from outside the profile cannot resolve
+  bare specifiers into `app.asar`
+- Tool name deliberately differs from upstream `list_agents` to avoid both a
+  duplicate-registration error and the semantic conflict documented in upstream
+  #7642
+- Ring buffer capped at 200 notes per subagent, 200 characters per note;
+  `reasoning` blocks are always excluded
+
+### Safety
+
+- Read-only: no session writes, no event appends, no
+  `send_message` / `interrupt_agent` calls
+- Catalog failures throw instead of returning an empty array
+- Unreadable progress returns `narration: []` plus a `note`, never a silent miss
+- Projection registration failure degrades instead of aborting profile startup
+
+### Verification
+
+- 33 pure-logic unit tests (`test/projection.test.mjs`)
+- 17 schema checks against DSH's real `assertSupportedJsonSchema` /
+  `validateJsonSchemaValue` (`test/schema.dsh.mjs`)
+- 24 integration checks (`test/integration.dsh.mjs`)
+
+[0.1.1]: https://github.com/REALOIYO/whatsubagentsdoingnow/releases/tag/v0.1.1
+[0.1.0]: https://github.com/REALOIYO/whatsubagentsdoingnow/releases/tag/v0.1.0
