@@ -4,137 +4,101 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] — 2026-10-31
+## [0.2.1] — 2026-10-31
 
-Two features that both address the same failure: a parent agent reading a
-subagent's state wrong.
+### Removed
 
-1. **Finished children keep their closing message.** Settling unloads the child's
-   session, so its narration vanished and every finished child collapsed into a
-   bare "session not resident in memory" line. The settlement notice still lands
-   in the *parent* session carrying the closing text; the projection folds it
-   into a bounded `settled` list.
-2. **Termination reason.** Finished, truncated, errored, and aborted children all
-   looked identical. `turn/end` carries the difference; it now surfaces as
-   `stopReason`, with a `sessionQuery` fallback for unloaded sessions.
+- **Termination reason — added in 0.2.0, reverted here.** 0.2.0 began reporting
+  `stopReason` (`completed` / `max-tokens` / `interrupted` / `aborted` / `error`)
+  read from `turn/end`, with a `sessionQuery` fallback for unloaded sessions.
 
-Also: `buildRow` null-safety fix, tool-description trigger wording, `stateVersion`
-1 → 3.
+  It never worked in practice, for two independent reasons:
 
-## [Unreleased]
+  1. **No useful window.** `turn/end` only fires at the end of a turn. While the
+     child is running there is no `turn/end` yet; once it settles the session is
+     unloaded. Only the gap between turns was ever readable — which is exactly
+     when the answer does not matter.
+  2. **The fallback's dependency does not exist.** `sessionQuery` is provided by
+     `@deepseek-ai/dsh-session-query`, which is not installed in the profile:
+     `~/.dsh/profiles/desktop/node_modules/@deepseek-ai/` holds only four
+     packages, and the rest of DSH lives inside `app.asar`, out of a plugin's
+     import reach. The one related bundle
+     (`dsh-experimental-session-search`) ships an 11-byte `lib/index.js` — a
+     shell. So `ctx.get('sessionQuery')` always returned `undefined` and the
+     fallback was dead code.
+
+  The unit tests passed throughout, because they tested the fold logic rather
+  than whether the service exists on a real machine. Removing this drops the
+  static footprint from ~632 back to **~590 tokens**; `stateVersion` stays at 3.
+
+  Reading the session file directly remains the only viable path, documented as a
+  rejected alternative in
+  [`docs/how-it-works.md`](docs/how-it-works.md#终止原因试过又撤掉的功能--termination-reason-a-reverted-attempt).
 
 ### Added
 
-- **The description now opens with the tool name.** The package is
+- **`docs/how-it-works.md`.** All implementation reasoning moved out of the
+  README: why narration comes from a projection rather than a cold log read, the
+  purity constraints on `apply`, why `reasoning` blocks are excluded, how the
+  closing message is captured from the parent session, the supported JSON Schema
+  subset, what `stateVersion` actually does, and a failure-mode catalogue
+  including the one still unsolved.
+
+### Changed
+
+- **README rewritten for readers, not implementers.** 555 → 331 lines. The
+  problem/solution framing, cost tables, state semantics and troubleshooting
+  stay; deep implementation discussion moves to `docs/how-it-works.md`. Now also
+  states plainly that when the filesystem already reveals progress this plugin is
+  redundant — measured against a real Agent Teams lead that never called it.
+
+- **The description opens with the tool name.** The package is
   `what-sub-agents-doing-now` while the tool is `what_subagents_are_doing`. A
   model that saw both spelled out the hybrid `what_subagents_are_doing_now` and
-  concluded the tool was missing — a silent total failure of the plugin, since
-  it never got called. The first line of the description is now
+  concluded the tool was missing — a silent total failure, since it never got
+  called. The first line is now
 
   `what_subagents_are_doing — show what each subagent is doing now.`
 
-  Static cost 573 → 632 tokens; most of that increase is the new `stopReason`
-  output schema, not this line.
-
-- **Finished subagents now keep their closing message.** When a child settles its
-  session is unloaded, so its narration became unreadable and every finished child
-  collapsed into a bare `session not resident in memory` line. The settlement
-  notice, however, still lands in the *parent* session as an
-  `agent/inbox/spliced` event carrying `source.kind = "subagent-settled"` plus the
-  child's closing text. The projection unit runs against every session, so it now
-  folds those notices into a bounded `settled` list and the tool reports:
-
-  ```
-  7dca3e4e [idle] — 分析 A 组 asar 结构
-      note: session unloaded after settlement; the closing message is preserved below
-      closing message, 240s ago:
-        英语完成，共 60 题。
-  ```
-
-  同一子代理只保留最新一条，上限 50 条，收尾语截断 300 字符。
-  `stateVersion` 因此从 1 升到 2。
-
-- Parameter `before` now spells out the semantics that users got wrong: it is a
-  **strictly-less-than** seq filter, and passing `1` returns nothing because seq
-  starts at 0.
-
-- **Termination reason (`stopReason`).** A child that hit the output token limit,
-  errored out, or was aborted looks exactly like one that finished normally: its
-  session is unloaded and the settlement notice carries only
-  `kind`/`form`/`summary`/`senderSessionId` — no outcome field. The parent would
-  read a half-finished answer as a final one.
-
-  The `turn/end` event does carry it (`reason.kind` = `completed` / `max-tokens` /
-  `interrupted` / `aborted` / `error`), so the projection unit now folds it into
-  `stopReason` while the session is still alive. Once the child settles,
-  `readStopReasonFromLog` falls back to `sessionQuery.listEvents(id)` — that API
-  is live-preferred but reads the persisted log, so it works after unload.
-  Rendered as plain English:
-
-  ```
-  stop reason: STOPPED by the output token limit — its answer was cut off
-  mid-thought, so treat the closing message as incomplete and re-delegate if
-  you need the rest
-  ```
-
-  `sessionQuery` is looked up with `ctx.get('sessionQuery')`, not declared in
-  `inject`: it is an enhancement, and its absence must not stop the plugin from
-  loading.
-
-- **Regression tests for projection-state null-safety in `buildRow`.** `readProgress`
-  only guarded `undefined`; `stateOf` returning `null` reached
-  `progress.lastAt` and threw `TypeError`, failing the whole tool call. Fixed
-  with an object check plus a `narration` array guard, and eight tests that
-  reproduce each shape (`null` state, `null` narration, missing `narration`,
-  non-array narration). Verified by reverting the guard: the tests fail with
-  `Cannot read properties of null (reading 'lastAt')`.
-
- A monitoring
+- **Tool description states the trigger, not just the subject.** A monitoring
   tool that only says *what* it does never gets called: after delegating, the
   model moves on to other work and only looks back on the settlement notice —
-  which arrives exclusively at the end, i.e. exactly when it does not need
-  progress. The description now opens with "Use this when you want to know how
-  far a running subagent has gotten, or when one has been quiet longer than its
-  task should take…".
+  which arrives exclusively at the end. The description now opens with "Use this
+  when you want to know how far a running subagent has gotten…".
 
   The closing anti-polling line was also reworded. It used to be unconditional —
   `Do not poll in a loop: you are notified when a subagent settles.` — which
   reads as "just wait for the notice" and removes the motive to check mid-task.
-  It now permits a single curious-or-suspicious check and only forbids looping:
+  It now permits a single curious-or-suspicious check and only forbids looping.
 
-  `One check when you are curious or suspicious is exactly what this is for.`
-  `Do not poll in a loop: settlement already notifies you.`
+### Fixed
 
-  Cost of the added wording: static footprint goes from ~484 to **~573 tokens**
-  (+89), paid every turn. Accepted because a tool nobody calls costs more than
-  the tokens it saves.
+- **`buildRow` threw on unreadable projection state.** `readProgress` only
+  guarded `undefined`; `stateOf` returning `null` reached `progress.lastAt` and
+  threw `TypeError`, failing the whole tool call. Fixed with an object check plus
+  a `narration` array guard, covered by eight tests that reproduce each shape.
+  Verified by reverting the guard: the tests fail with
+  `Cannot read properties of null (reading 'lastAt')`.
 
-- **`stateVersion` bumped 1 → 3.** DSH discards checkpoint rows whose `ver` does
-  not match the live unit's `stateVersion`
-  (`never a migration`), so existing projection rows are dropped and re-folded
-  from the session log on first touch. Nothing crashes; narration simply rebuilds.
-  (2 added `settled`, 3 added `stopReason`.)
+## [0.2.0] — 2026-10-31
 
-- **Trimmed the static token cost from ~783 to ~484 tokens.** The earlier figure
-  was measured on pretty-printed JSON; the model actually receives compact JSON.
-  On top of that correction, `description` and the parameter schemas were
-  tightened and the redundant inner `additionalProperties: false` was dropped
-  (the outer one still enforces the shape). Field semantics now live in
-  `description` once instead of being repeated in the schema.
-- Documented the `file:` vs `link:` install difference: only `link:` (a symlink)
-  falls inside the range `dsh-hmr`'s `profileRoots()` observes, so only `link:`
-  hot-reloads code edits. `file:` requires a restart.
-- Added a token-cost section with measured static and per-call figures, and an
-  explicit note that returns accumulate in conversation history.
+> **Superseded by 0.2.1** — the termination-reason feature was reverted. Kept
+> for the record.
 
-### Documented
+### Added
 
-- **Nested subagents are untested.** Only one level of delegation
-  (parent → child) has been verified. `scope: 'descendants'` delegates to upstream
-  `listDescendants()`, which is documented to recurse, but that path has not been
-  exercised against a real grandchild tree here.
-- `image` and `reasoning` blocks are skipped by design; a step that only emits an
-  image produces no narration entry.
+- **Finished children keep their closing message.** Settling unloads the child's
+  session, so its narration vanished and every finished child collapsed into a
+  bare "session not resident in memory" line. The settlement notice still lands
+  in the *parent* session carrying the closing text; the projection folds it
+  into a bounded `settled` list.
+
+- ~~Termination reason~~ — reverted in 0.2.1, see above.
+
+### Changed
+
+- `stateVersion` 2 → 3.
+
 
 ## [0.1.1] — 2026-10-31
 

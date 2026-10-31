@@ -17,7 +17,6 @@ import {
   initState,
   extractNarrationTexts,
   extractSettlement,
-  extractStopReason,
   applyEvent,
 } from '../lib/projection.js';
 import { pageNarration, clampLimit, countSince, SeenCursor, DEFAULT_LIMIT, MAX_LIMIT, classifyState } from '../lib/paginate.js';
@@ -364,91 +363,6 @@ test('inserted 非数组时不崩', () => {
 });
 
 // ---------------------------------------------------------------
-// stopReason：从 turn/end 折叠终止原因
-// ---------------------------------------------------------------
-
-/** 造一个 turn/end 事件。 */
-function turnEndEvent(reason, seq = 10, time = 1000) {
-  return { type: 'turn/end', seq, time, data: { turn: 1, reason } };
-}
-
-test('initState 初始没有 stopReason', () => {
-  assert.equal(initState({}, 0).stopReason, undefined);
-});
-
-test('completed 被记录', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent({ kind: 'completed' }));
-  assert.deepEqual(st.stopReason, { kind: 'completed' });
-});
-
-test('max-tokens 被记录 —— 这是被截断的信号', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent({ kind: 'max-tokens' }));
-  assert.equal(st.stopReason.kind, 'max-tokens');
-});
-
-test('error 带 message 和 code', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent({
-    kind: 'error',
-    error: { message: 'transport error: fetch failed', code: 'TRANSPORT' },
-  }));
-  assert.equal(st.stopReason.kind, 'error');
-  assert.equal(st.stopReason.message, 'transport error: fetch failed');
-  assert.equal(st.stopReason.code, 'TRANSPORT');
-});
-
-test('aborted 的嵌套 reason 折成 via', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent({
-    kind: 'aborted',
-    reason: { kind: 'user' },
-  }));
-  assert.equal(st.stopReason.kind, 'aborted');
-  assert.equal(st.stopReason.via, 'user');
-});
-
-test('超长 error.message 被截断', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent({
-    kind: 'error',
-    error: { message: 'x'.repeat(5000) },
-  }));
-  assert.ok(st.stopReason.message.length <= 240, `got ${st.stopReason.message.length}`);
-  assert.ok(st.stopReason.message.endsWith('…'));
-});
-
-test('reason 缺失时 turn/end 仍然刷新 lastAt', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent(undefined, 5, 777));
-  assert.equal(st.lastAt, 777);
-  assert.equal(st.lastSeq, 5);
-  assert.equal(st.stopReason, undefined);
-});
-
-test('reason.kind 不是字符串时不记录', () => {
-  const st = applyEvent(initState({}, 0), turnEndEvent({ kind: 42 }));
-  assert.equal(st.stopReason, undefined);
-});
-
-test('多个 turn/end 时后者覆盖前者', () => {
-  let st = applyEvent(initState({}, 0), turnEndEvent({ kind: 'interrupted' }, 1, 100));
-  st = applyEvent(st, turnEndEvent({ kind: 'completed' }, 2, 200));
-  assert.equal(st.stopReason.kind, 'completed');
-});
-
-test('extractStopReason 对非对象返回 undefined', () => {
-  assert.equal(extractStopReason(null), undefined);
-  assert.equal(extractStopReason('completed'), undefined);
-  assert.equal(extractStopReason(undefined), undefined);
-});
-
-test('turn/end 不改 narration —— 终止不产生旁白', () => {
-  let st = applyEvent(initState({}, 0), {
-    type: 'assistant/message', seq: 1, time: 10,
-    data: { message: { content: [{ type: 'text', text: '干活中' }] } },
-  });
-  const before = st.narration.length;
-  st = applyEvent(st, turnEndEvent({ kind: 'max-tokens' }, 2, 20));
-  assert.equal(st.narration.length, before);
-});
-
-// ---------------------------------------------------------------
 // buildRow 空值防御 —— 投影状态读不到时绝不能抛
 //
 // 这组测试针对一个真实缺陷：readProgress 只挡 undefined，挡不住
@@ -510,21 +424,6 @@ test('narration 是字符串（被写坏）时不抛', () => {
   const ctx = ctxWithProgress({ narration: 'oops', steps: 1, lastAt: 50_000 });
   const row = buildRow(ctx, { id: 'c', label: 'l', mode: 'continuable' }, rowOptions());
   assert.deepEqual(row.narration, []);
-});
-
-test('stopReason 被透传到行', () => {
-  const ctx = ctxWithProgress({
-    narration: [], steps: 5, lastAt: 90_000,
-    stopReason: { kind: 'max-tokens' },
-  });
-  const row = buildRow(ctx, { id: 'c', label: 'l', mode: 'continuable' }, rowOptions());
-  assert.deepEqual(row.stopReason, { kind: 'max-tokens' });
-});
-
-test('没有 stopReason 时行里不带该字段', () => {
-  const ctx = ctxWithProgress({ narration: [], steps: 5, lastAt: 90_000 });
-  const row = buildRow(ctx, { id: 'c', label: 'l', mode: 'continuable' }, rowOptions());
-  assert.equal(row.stopReason, undefined);
 });
 
 test('progress 为 null 时仍能正常渲出 steps 缺失的行', () => {

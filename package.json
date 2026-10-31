@@ -1,7 +1,7 @@
 {
   "name": "what-sub-agents-doing-now",
-  "version": "0.2.0",
-  "description": "See what each subagent is actually doing: surface the progress notes a child wrote itself and why it stopped, not just running/inactive. Read-only, non-shadowing.",
+  "version": "0.2.1",
+  "description": "See what each subagent is actually doing: surface the progress notes a child wrote itself, not just running/inactive. Read-only, non-shadowing.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
