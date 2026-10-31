@@ -118,6 +118,40 @@ what_subagents_are_doing({
 })
 ```
 
+### 什么时候该调 / When to call it
+
+这是插件最容易失效的一环，值得单独说。
+
+This is where a monitoring plugin usually fails, so it gets its own section.
+
+工具描述里只写「这是什么」是不够的：模型派完子代理就去干别的活，直到结算通知
+才回头，中途没有任何理由主动来查。而通知**只在子代理结束时才到**，真想了解
+进度的那一刻恰恰没有通知。片段描述必须显式写出触发条件，否则工具会长期闲置。
+
+Describing *what it does* is not enough. After delegating, a model moves on to
+other work and only looks back when the settlement notice arrives — but that
+notice **only comes at the end**. The moment it actually wants progress is
+exactly the moment no notice exists. The description therefore spells out the
+trigger:
+
+> Use this when you want to know how far a running subagent has gotten, or when
+> one has been quiet longer than its task should take and you cannot tell
+> whether it finished, failed, or is stuck.
+
+反过来的坑是防轮询的措辞被读成「别查」。旧版写的是无条件的
+`Do not poll in a loop: you are notified when a subagent settles.`，
+容易被理解成「等通知就行」，正好把中途查看的动机堵死。现在改成先允许一次
+「好奇或怀疑时的查看」，再限制循环轮询：
+
+The opposite trap is an anti-polling line read as "never look". The old wording
+was an unconditional `Do not poll in a loop: you are notified when a subagent
+settles.`, easily taken as "just wait for the notice" — killing the very
+behaviour the plugin exists for. It now permits a single check when curious or
+suspicious, and only forbids looping:
+
+> One check when you are curious or suspicious is exactly what this is for.
+> Do not poll in a loop: settlement already notifies you.
+
 ### 状态含义 / What each state means
 
 | state | 判定 / Rule | 含义 / Meaning |
@@ -158,6 +192,33 @@ Look twice and the second call adds `narrationSinceLastLook`:
 
 Exact count of notes added since the previous look.
 
+### 已结束的子代理会保留收尾语 / Finished children keep their closing message
+
+子代理结束后 session 会被卸载，旁白就读不到了。但**结算通知还留在父会话里**，
+带着它最后说的话，所以本插件把它捞出来：
+
+A finished child's session is unloaded, so its narration is gone. The **settlement
+notice stays in the parent session** carrying the child's closing text, so this
+plugin recovers it:
+
+```
+7dca3e4e [idle] — 分析 A 组 asar 结构
+    note: session unloaded after settlement; the closing message is preserved below
+    closing message, 240s ago:
+      英语完成，共 60 题。
+```
+
+这样回溯时至少知道「它干完了，结论是这个」，而不是只剩一句「读不到」。
+
+Now a finished child still tells you what it concluded, instead of collapsing
+into a bare "unreadable".
+
+> 结算记录只有**在插件运行期间发生的结算**才会被收集。装插件之前就已结束的
+> 子代理没有这条记录，仍显示 `session not resident in memory`。
+>
+> Only settlements that happen **while the plugin is running** get collected.
+> Children that finished before installation still show the bare unavailable note.
+
 ## 配置 / Configuration
 
 ```yaml
@@ -182,10 +243,11 @@ installed:
 
 | 部分 / Part | tokens |
 |---|---|
-| description | ~164 |
-| parameters schema | ~146 |
-| output schema | ~171 |
-| **合计 / Total** | **~484** |
+| description | ~201 |
+| parameters schema | ~179 |
+| output schema | ~187 |
+| name | ~6 |
+| **合计 / Total** | **~573** |
 
 （按紧凑 JSON 实测；中文按 1 字 ≈ 1 token、其余 4 字符 ≈ 1 token 保守估算。）
 
@@ -199,10 +261,10 @@ once in `description`. Static cost is paid every turn, so duplication is waste.
 
 ### 动态成本：每次调用 / Dynamic: per call
 
-**插件不会主动推送。** 你不调，context 里就只有上面那 ~484 tokens。
+**插件不会主动推送。** 你不调，context 里就只有上面那 ~573 tokens。
 调一次，返回那一刻的快照。
 
-**The plugin never pushes.** If you never call it, the only cost is the ~484
+**The plugin never pushes.** If you never call it, the only cost is the ~573
 tokens above. Each call returns a snapshot of that moment.
 
 实测返回量 / Measured return sizes:

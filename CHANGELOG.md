@@ -6,7 +6,56 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Finished subagents now keep their closing message.** When a child settles its
+  session is unloaded, so its narration became unreadable and every finished child
+  collapsed into a bare `session not resident in memory` line. The settlement
+  notice, however, still lands in the *parent* session as an
+  `agent/inbox/spliced` event carrying `source.kind = "subagent-settled"` plus the
+  child's closing text. The projection unit runs against every session, so it now
+  folds those notices into a bounded `settled` list and the tool reports:
+
+  ```
+  7dca3e4e [idle] — 分析 A 组 asar 结构
+      note: session unloaded after settlement; the closing message is preserved below
+      closing message, 240s ago:
+        英语完成，共 60 题。
+  ```
+
+  同一子代理只保留最新一条，上限 50 条，收尾语截断 300 字符。
+  `stateVersion` 因此从 1 升到 2。
+
+- Parameter `before` now spells out the semantics that users got wrong: it is a
+  **strictly-less-than** seq filter, and passing `1` returns nothing because seq
+  starts at 0.
+
 ### Changed
+
+- **Tool description now states the trigger, not just the subject.** A monitoring
+  tool that only says *what* it does never gets called: after delegating, the
+  model moves on to other work and only looks back on the settlement notice —
+  which arrives exclusively at the end, i.e. exactly when it does not need
+  progress. The description now opens with "Use this when you want to know how
+  far a running subagent has gotten, or when one has been quiet longer than its
+  task should take…".
+
+  The closing anti-polling line was also reworded. It used to be unconditional —
+  `Do not poll in a loop: you are notified when a subagent settles.` — which
+  reads as "just wait for the notice" and removes the motive to check mid-task.
+  It now permits a single curious-or-suspicious check and only forbids looping:
+
+  `One check when you are curious or suspicious is exactly what this is for.`
+  `Do not poll in a loop: settlement already notifies you.`
+
+  Cost of the added wording: static footprint goes from ~484 to **~573 tokens**
+  (+89), paid every turn. Accepted because a tool nobody calls costs more than
+  the tokens it saves.
+
+- **`stateVersion` bumped 1 → 2.** DSH discards checkpoint rows whose `ver` does
+  not match the live unit's `stateVersion`
+  (`never a migration`), so existing projection rows are dropped and re-folded
+  from the session log on first touch. Nothing crashes; narration simply rebuilds.
 
 - **Trimmed the static token cost from ~783 to ~484 tokens.** The earlier figure
   was measured on pretty-printed JSON; the model actually receives compact JSON.

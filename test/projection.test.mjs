@@ -13,8 +13,10 @@ import {
   STATE_VERSION,
   MAX_NARRATION,
   MAX_NARRATION_CHARS,
+  MAX_SETTLED,
   initState,
   extractNarrationTexts,
+  extractSettlement,
   applyEvent,
 } from '../lib/projection.js';
 import { pageNarration, clampLimit, countSince, SeenCursor, DEFAULT_LIMIT, MAX_LIMIT, classifyState } from '../lib/paginate.js';
@@ -255,6 +257,108 @@ test('agents.get 抛错不崩', () => {
   const bad = { agents: { get: () => { throw new Error('boom'); } } };
   const r = classifyState(bad, 'id', 1000, 2000, 120_000);
   assert.equal(r.state, 'idle');
+});
+
+console.log('\n=== extractSettlement（子代理结算消息）===');
+
+function splicedEvent(inserted) {
+  return { type: 'agent/inbox/spliced', seq: 1, time: 5000, data: { target: 'next-step', start: 0, inserted } };
+}
+
+test('从标准结算通知里取出收尾语', () => {
+  const msg = {
+    content: [
+      { type: 'text', text: 'Background subagent abc finished and will do no further work.' },
+      { type: 'text', text: 'Its closing message:' },
+      { type: 'text', text: '英语完成，共 60 题。' },
+    ],
+    source: { kind: 'subagent-settled', form: 'notice', senderSessionId: 'abc-123' },
+    role: 'user',
+  };
+  const r = extractSettlement(msg);
+  assert.equal(r.childId, 'abc-123');
+  assert.equal(r.text, '英语完成，共 60 题。');
+});
+test('中文标记"它的收尾消息"也能识别', () => {
+  const msg = {
+    content: [{ type: 'text', text: '它的收尾消息:' }, { type: 'text', text: '做完了' }],
+    source: { kind: 'subagent-settled', senderSessionId: 'x' },
+  };
+  assert.equal(extractSettlement(msg).text, '做完了');
+});
+test('没有收尾语时退回 summary', () => {
+  const msg = {
+    content: [{ type: 'text', text: 'Background subagent abc stopped.' }],
+    source: { kind: 'subagent-settled', senderSessionId: 'abc', summary: 'stopped early' },
+  };
+  assert.equal(extractSettlement(msg).text, 'stopped early');
+});
+test('非结算消息返回 undefined', () => {
+  assert.equal(extractSettlement({ content: [], source: { kind: 'user' } }), undefined);
+  assert.equal(extractSettlement({ content: [] }), undefined);
+  assert.equal(extractSettlement(null), undefined);
+  assert.equal(extractSettlement({}), undefined);
+});
+test('缺 senderSessionId 返回 undefined', () => {
+  assert.equal(extractSettlement({
+    content: [{ type: 'text', text: 'x' }],
+    source: { kind: 'subagent-settled' },
+  }), undefined);
+});
+test('超长收尾语被截断', () => {
+  const msg = {
+    content: [{ type: 'text', text: 'Its closing message:' }, { type: 'text', text: 'x'.repeat(500) }],
+    source: { kind: 'subagent-settled', senderSessionId: 'a' },
+  };
+  const r = extractSettlement(msg);
+  assert.ok(r.text.length <= 300, `实际 ${r.text.length}`);
+  assert.ok(r.text.endsWith('…'));
+});
+
+console.log('\n=== settled 累积 ===');
+test('initState 带空 settled', () => {
+  assert.deepEqual(initState({}, 0).settled, []);
+});
+test('spliced 事件累积 settled', () => {
+  let st = initState({}, 0);
+  st = applyEvent(st, splicedEvent([{
+    content: [{ type: 'text', text: 'Its closing message:' }, { type: 'text', text: '完成 A' }],
+    source: { kind: 'subagent-settled', senderSessionId: 'child-a' },
+  }]));
+  assert.equal(st.settled.length, 1);
+  assert.equal(st.settled[0].childId, 'child-a');
+  assert.equal(st.settled[0].text, '完成 A');
+  assert.equal(st.settled[0].time, 5000);
+});
+test('同一子代理只保留最新一条', () => {
+  let st = initState({}, 0);
+  const mk = (txt) => splicedEvent([{
+    content: [{ type: 'text', text: 'Its closing message:' }, { type: 'text', text: txt }],
+    source: { kind: 'subagent-settled', senderSessionId: 'same' },
+  }]);
+  st = applyEvent(st, mk('第一次'));
+  st = applyEvent(st, mk('第二次'));
+  assert.equal(st.settled.length, 1);
+  assert.equal(st.settled[0].text, '第二次');
+});
+test(`settled 上限 ${MAX_SETTLED}`, () => {
+  let st = initState({}, 0);
+  for (let i = 0; i < MAX_SETTLED + 10; i++) {
+    st = applyEvent(st, splicedEvent([{
+      content: [{ type: 'text', text: 'Its closing message:' }, { type: 'text', text: `c${i}` }],
+      source: { kind: 'subagent-settled', senderSessionId: `child-${i}` },
+    }]));
+  }
+  assert.equal(st.settled.length, MAX_SETTLED);
+});
+test('无结算内容的 spliced 事件返回原引用', () => {
+  const st = initState({}, 0);
+  const same = applyEvent(st, splicedEvent([{ content: [], source: { kind: 'user' } }]));
+  assert.equal(same, st);
+});
+test('inserted 非数组时不崩', () => {
+  const st = initState({}, 0);
+  assert.equal(applyEvent(st, { type: 'agent/inbox/spliced', seq: 1, time: 1, data: {} }), st);
 });
 
 console.log(`\n${'-'.repeat(50)}`);
