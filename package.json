@@ -14,7 +14,6 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
-    "README.zh.md",
     "CHANGELOG.md",
     "LICENSE",
     "docs"
@@ -53,9 +52,7 @@
     "dsh": ">=0.2.1-rc.1"
   },
   "scripts": {
-    "test": "node test/projection.test.mjs",
-    "test:schema": "node test/schema.dsh.mjs",
-    "test:integration": "node test/integration.dsh.mjs"
+    "test": "node test/projection.test.mjs"
   },
   "dsh": {
     "bundle": {
