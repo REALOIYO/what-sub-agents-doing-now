@@ -25,6 +25,17 @@ Also: `buildRow` null-safety fix, tool-description trigger wording, `stateVersio
 
 ### Added
 
+- **The description now opens with the tool name.** The package is
+  `what-sub-agents-doing-now` while the tool is `what_subagents_are_doing`. A
+  model that saw both spelled out the hybrid `what_subagents_are_doing_now` and
+  concluded the tool was missing — a silent total failure of the plugin, since
+  it never got called. The first line of the description is now
+
+  `what_subagents_are_doing — show what each subagent is doing now.`
+
+  Static cost 573 → 632 tokens; most of that increase is the new `stopReason`
+  output schema, not this line.
+
 - **Finished subagents now keep their closing message.** When a child settles its
   session is unloaded, so its narration became unreadable and every finished child
   collapsed into a bare `session not resident in memory` line. The settlement

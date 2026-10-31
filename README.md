@@ -118,6 +118,12 @@ what_subagents_are_doing({
 })
 ```
 
+> 包名是 `what-sub-agents-doing-now`，工具名是 `what_subagents_are_doing`。
+> 工具名**不带** `_now`。
+>
+> The package is `what-sub-agents-doing-now`; the tool is
+> `what_subagents_are_doing` — the tool name has **no** `_now` suffix.
+
 ### 什么时候该调 / When to call it
 
 这是插件最容易失效的一环，值得单独说。
@@ -305,11 +311,11 @@ installed:
 
 | 部分 / Part | tokens |
 |---|---|
-| description | ~201 |
+| description | ~217 |
 | parameters schema | ~179 |
-| output schema | ~187 |
+| output schema | ~229 |
 | name | ~6 |
-| **合计 / Total** | **~573** |
+| **合计 / Total** | **~632** |
 
 （按紧凑 JSON 实测；中文按 1 字 ≈ 1 token、其余 4 字符 ≈ 1 token 保守估算。）
 
@@ -323,10 +329,10 @@ once in `description`. Static cost is paid every turn, so duplication is waste.
 
 ### 动态成本：每次调用 / Dynamic: per call
 
-**插件不会主动推送。** 你不调，context 里就只有上面那 ~573 tokens。
+**插件不会主动推送。** 你不调，context 里就只有上面那 ~632 tokens。
 调一次，返回那一刻的快照。
 
-**The plugin never pushes.** If you never call it, the only cost is the ~573
+**The plugin never pushes.** If you never call it, the only cost is the ~632
 tokens above. Each call returns a snapshot of that moment.
 
 实测返回量 / Measured return sizes:
