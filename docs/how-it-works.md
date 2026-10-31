@@ -242,24 +242,47 @@ This section documents a failed design so nobody walks into it again.
 
 能读到它的只剩"多轮之间等待回话"那一段，而这段通常很短。
 
-**第二，回退路径的依赖不存在。**
+**第二，回退路径当时没验证过。**
 
-`sessionQuery` 这个服务由 `@deepseek-ai/dsh-session-query` 提供。查 profile：
+最初以为 `sessionQuery` 服务不存在，理由是 profile 的 `node_modules/@deepseek-ai/`
+下只有 4 个包，`dsh-experimental-session-search` 的 `lib/index.js` 只有 11 字节
+（`export {};`）。
 
-```sh
-ls ~/.dsh/profiles/desktop/node_modules/@deepseek-ai/
-# cosmokit  dsh-client-ui-settings  dsh-client-ui-slots  schemastery
+**这个判断是错的。** 服务由 `dsh-base` 的 patch 挂载，跟 profile 里有没有包无关。
+`dsh-base/cordis.patch.yml` 第 149-158 行：
+
+```yaml
+# `openAt: never` keeps ctx.sessionQuery mounted — exact reads, titles,
+# and lineage traces stay available — while search calls fail with
+# SESSION_QUERY_SEARCH_DISABLED
+- id: session-query-sqlite
+  name: '@deepseek-ai/dsh-session-query-sqlite'
+  config:
+    path: ':memory:'
+    openAt: never
 ```
 
-只有 4 个包。DSH 的其余能力全在 `app.asar` 内部，插件 import 不到；
-而 `dsh-experimental-session-search`（profile 里唯一相关的 bundle）
-其 `lib/index.js` 只有 **11 字节**，是个空壳。
+`openAt: never` 只关掉全文搜索（`_assertSearchEnabled` 会抛
+`SESSION_QUERY_SEARCH_DISABLED`），不影响 `listEvents`、`observeSession`、
+`readSession`。上游自己的 `listChildren` 就是靠 `ctx.get("sessionQuery")`
+读 catalog 的。
 
-所以 `ctx.get('sessionQuery')` 永远返回 `undefined`，那段回退代码是死代码。
+所以回退路径**本来是通的**，那段代码不是死代码。
 
-**Third, the design was never validated against the real profile.** 它通过了
-全部单元测试——因为测试测的是"投影逻辑对不对"，而不是"这个服务在你的机器上
-存不存在"。
+**This was checked wrongly, then corrected.** The service is mounted by
+`dsh-base`'s patch regardless of what sits in the profile's `node_modules`.
+`openAt: never` only disables full-text search; `listEvents` and
+`observeSession` still work — upstream's own `listChildren` depends on it.
+
+**第三，真正的问题是没有验证。**
+
+它通过了全部单元测试——因为测试测的是"投影逻辑对不对"，而不是"那条路在这台
+机器上走不走得通"。而且后来发现我连"服务不存在"这个前提都查错了，说明当时的
+检查本身也不够。
+
+**Third, and the real issue: it was never validated end to end.** The unit tests
+covered the fold logic, not whether the path works on a real machine. The
+"service does not exist" belief itself turned out to be a misreading.
 
 ### 结论 / Outcome
 
@@ -267,6 +290,14 @@ ls ~/.dsh/profiles/desktop/node_modules/@deepseek-ai/
 `readStopReasonFromLog`、13 项相关测试、README 的一整节。
 
 静态成本因此从 632 回到 590 tokens。
+
+移除的理由现在只剩第一条站得住：**窗口太窄**。结束原因只在 `turn/end` 产生，
+子代理在跑时没有，结算后 session 又卸载了。即使回退路径可用，"已结束后再回读
+日志"这个动作的价值也远不如"跑的时候能看到进度"。
+
+The removal now rests on one reason only: the window is too narrow. Even with a
+working fallback, reading the log *after* settlement is worth far less than
+seeing progress while the child runs.
 
 ### 如果以后要做 / If revisited
 

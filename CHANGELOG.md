@@ -12,27 +12,27 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `stopReason` (`completed` / `max-tokens` / `interrupted` / `aborted` / `error`)
   read from `turn/end`, with a `sessionQuery` fallback for unloaded sessions.
 
-  It never worked in practice, for two independent reasons:
+  It never worked in practice. The reason that stands is:
 
-  1. **No useful window.** `turn/end` only fires at the end of a turn. While the
-     child is running there is no `turn/end` yet; once it settles the session is
-     unloaded. Only the gap between turns was ever readable — which is exactly
-     when the answer does not matter.
-  2. **The fallback's dependency does not exist.** `sessionQuery` is provided by
-     `@deepseek-ai/dsh-session-query`, which is not installed in the profile:
-     `~/.dsh/profiles/desktop/node_modules/@deepseek-ai/` holds only four
-     packages, and the rest of DSH lives inside `app.asar`, out of a plugin's
-     import reach. The one related bundle
-     (`dsh-experimental-session-search`) ships an 11-byte `lib/index.js` — a
-     shell. So `ctx.get('sessionQuery')` always returned `undefined` and the
-     fallback was dead code.
+  **No useful window.** `turn/end` only fires at the end of a turn. While the
+  child is running there is no `turn/end` yet; once it settles the session is
+  unloaded. Only the gap between turns was ever readable — which is exactly
+  when the answer does not matter.
 
-  The unit tests passed throughout, because they tested the fold logic rather
-  than whether the service exists on a real machine. Removing this drops the
-  static footprint from ~632 back to **~590 tokens**; `stateVersion` stays at 3.
+  > **Correction (same release).** The original entry claimed a second reason:
+  > that the `sessionQuery` fallback depended on a service missing from the
+  > profile. **That was wrong.** The service is mounted by `dsh-base`'s patch
+  > (`session-query-sqlite` with `openAt: never`), and `openAt: never` only
+  > disables full-text search — `listEvents` and `observeSession` still work.
+  > Upstream's own `listChildren` reads the catalog through it. The fallback was
+  > not dead code; it was untested. The real lesson is the same one: the unit
+  > tests covered fold logic, not whether the path works end to end — and even
+  > the premise behind the "missing service" claim was never checked.
 
-  Reading the session file directly remains the only viable path, documented as a
-  rejected alternative in
+  The unit tests passed throughout. Removing this drops the static footprint
+  from ~632 back to **~590 tokens**; `stateVersion` stays at 3.
+
+  Reading the session file directly remains an alternative, documented in
   [`docs/how-it-works.md`](docs/how-it-works.md#终止原因试过又撤掉的功能--termination-reason-a-reverted-attempt).
 
 ### Added

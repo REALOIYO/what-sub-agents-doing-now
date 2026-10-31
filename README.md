@@ -119,18 +119,21 @@ function statusOf(agents, id) {
 
 | 派活方式 | `list_agents` | 本插件 |
 |---|---|---|
-| `spawn_teammate` | ✅ 但只有状态词 | ✅ 步数 + 旁白 |
-| `subagent`（spawn） | ❌ 完全不可见 | ✅ |
-| `subagent_fork` | ❌ 完全不可见 | ✅ |
-| `workflow` 的 `agent()` | ❌ | ✅ |
-| `ralph` 的每轮 | ❌ | ✅ |
+| `spawn_teammate` | 可见，但只有状态词 | 可见，含步数和旁白 |
+| `subagent`（spawn） | 不可见 | 可见 |
+| `subagent_fork` | 不可见 | 可见 |
+| `workflow` 的 `agent()` | 不可见 | 未实测 |
+| `ralph` 的每轮 | 不可见 | 未实测 |
 
-三条代码路径都汇到 `subagents.startActivation`，登记动作写在它内部的
-`startLocal` 里，所以上面这些方式都会被记录。
+`spawn_teammate`、`subagent`、`subagent_fork` 三种在真实会话里验证过。
+`workflow` 和 `ralph` 未实测：它们在代码里都汇到 `subagents.startActivation`，
+登记动作写在它内部的 `startLocal` 里，按代码路径应当同样被记录，但没在真实
+会话里跑过。
 
-All delegation paths funnel through `subagents.startActivation`, and the
-catalog write lives inside its `startLocal`. So every path listed above is
-recorded.
+Three paths are verified on real sessions. `workflow` and `ralph` are not: both
+funnel through `subagents.startActivation` in code, and the catalog write lives
+inside its `startLocal`, so they should be recorded too — but this has not been
+exercised end to end.
 
 ### DSH 官方没有做的事 / What DSH does not provide
 
@@ -264,6 +267,31 @@ what_subagents_are_doing({
 >
 > The package is `what-sub-agents-doing-now`; the tool is
 > `what_subagents_are_doing` — **no** `_now` suffix.
+
+### 返回什么 / What comes back
+
+每个子代理一行，字段如下。模型实际读到的是渲染后的文本，不是原始 JSON。
+
+| 字段 | 含义 |
+|---|---|
+| `id` / `label` | 子代理 id，和派活时给的名字 |
+| `state` | `running` / `idle` / `possibly-stuck` / `external` |
+| `steps` | 走了几步 |
+| `lastTool` | 最后调用的工具名 |
+| `idleSeconds` | 距上次活动多少秒 |
+| `narration` | 它自己写的进度旁白（最近的几条） |
+| `narrationTotal` / `narrationOmitted` | 一共写了多少条 / 这次没给多少条 |
+| `narrationSinceLastLook` | 自你上次查看后新增几条 |
+| `oldestSeq` | 本页最早那条的 seq，用于 `before` 往回翻 |
+| `settled` / `settledSecondsAgo` | 已结束子代理的收尾语，和它距今多久 |
+| `note` | 读不到数据时的显式说明 |
+| `parent` / `depth` | 仅 `scope: 'descendants'` 时出现：上级 id 和层级 |
+
+`mode` 是内部字段（`continuable` / `one-shot` / `external`），一次性子代理会被
+过滤掉，所以一般看不到它。
+
+Each row carries the fields above. The model reads the rendered text, not raw
+JSON. `parent` and `depth` only appear under `scope: 'descendants'`.
 
 ### 状态含义 / What each state means
 
