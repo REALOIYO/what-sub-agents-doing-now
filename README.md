@@ -38,6 +38,12 @@ child-a [running] — 做 2020 全国 III 卷文科数学
 
 Install and it works — no config, no prompt changes.
 
+**装法（桌面端，不用命令行）：** 设置 → 插件 → **添加插件** → 粘贴
+`https://github.com/REALOIYO/what-sub-agents-doing-now` → 确认。
+
+**Install (desktop, no CLI):** Settings → Plugins → **Add plugin** → paste
+`https://github.com/REALOIYO/what-sub-agents-doing-now` → confirm.
+
 ---
 
 ## 问题 / The problem
@@ -128,17 +134,35 @@ one look like. **Not fixed upstream, so this plugin fills it.**
 
 ## 安装 / Install
 
-走插件管理器（推荐，有事务回滚）：
+### 方式一：桌面端点几下就好 / Desktop, no CLI
 
-Use the plugin manager (recommended, has transactional rollback):
+**这是最简单的方式，不用命令行、不用重启。**
+
+1. 打开 **设置 → 插件**
+2. 点 **添加插件**
+3. 在「包名或地址」里粘贴仓库链接：
+
+   ```
+   https://github.com/REALOIYO/what-sub-agents-doing-now
+   ```
+
+4. 确认安装，装完重启 DSH
+
+The dialog accepts a Git repository address (its placeholder is literally
+`https://github.com/author/dsh-plugin`). Paste this repo's URL, confirm, restart.
+
+> 插件管理器有事务回滚，装坏了能退回。这是唯一带安全网的安装方式。
+>
+> The plugin manager has transactional rollback — the only install path with a
+> safety net.
+
+### 方式二：命令行 / CLI
 
 ```sh
 dsh plugin --profile <profile> add what-sub-agents-doing-now
 ```
 
-或者本地开发用 `link:`：
-
-Or `link:` for local development:
+### 方式三：本地开发用 `link:` / For local development
 
 ```sh
 dsh plugin --profile <profile> add link:/path/to/what-sub-agents-doing-now
