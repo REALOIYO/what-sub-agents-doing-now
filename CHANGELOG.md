@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] — 2026-11-24
+
+### Fixed
+
+- **The tool failed on DSH 0.2.1+ with `ctx.subagents.listChildren is not a
+  function`.** `listChildren` and `listDescendants` were both module functions in
+  `@deepseek-ai/dsh-subagent`, but only `listDescendants` was published on the
+  `subagents` service object. Calls through the service now detect which methods
+  exist instead of assuming the old shape:
+
+  - `listChildren` present → used directly (unchanged behaviour, one level only)
+  - otherwise `listDescendants` → walked, then filtered to rows whose
+    `parentId` equals the caller and whose `kind` is `child`
+
+  Detection is by method presence rather than by version number, because the
+  plugin loads from the profile and has no reliable access to the running DSH
+  version. When neither method exists the tool now reports
+  `SUBAGENT_CONTROL_UNAVAILABLE` with a message naming the missing service,
+  instead of the misleading `is not a function`.
+
+- **`descendants` scope dropped every parent link.** The service returns
+  `parentId`, `buildRow` reads `parent`; rows are now normalised so a subtree
+  listing keeps its `parent=` and `depth=` annotations.
+
+- **Diagnostic rows were rendered as empty children.** `listDescendants` marks a
+  broken branch as `kind: 'diagnostic'` with an id but no `mode`; those slipped
+  past the mode filter and became child rows with no progress. They are now
+  skipped in both scopes.
+
 ## [0.2.2] — 2026-10-31
 
 ### Added

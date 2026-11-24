@@ -446,8 +446,9 @@ of crashing. When data is unavailable it says so rather than pretending.
 
 - **`subagent` 和 `subagent_fork` 已实测**，`workflow` 和 `ralph` **只验证了
   代码路径**（都走 `startActivation`），没在真实会话里跑过。
-- **嵌套子代理没测过。** 只验证过一层（父 → 子）。`scope: 'descendants'` 转发给
-  上游 `listDescendants()`，文档说会递归，但没在真实的孙代理树上验证过。
+- **嵌套子代理已实测。** 一层（父 → 子）和 `scope: 'descendants'` 都验证过，
+  子树行带回 `parent=` 与 `depth=`。`descendants` 会走完整棵可达目录树，
+  开销随树的大小增长，深层树用 `scope: 'children'`（默认）更划算。
 - **`image` 和 `reasoning` 按设计跳过。** 只发图片的 step 不产生旁白。
 - **看不到终止原因。** 子代理是被截断、报错还是正常结束，本插件不区分。
 - **文件系统比插件更省事时，插件是冗余的。** 如果子代理的产出落盘就能看出进展
@@ -455,7 +456,7 @@ of crashing. When data is unavailable it says so rather than pretending.
   不落盘的工作——推理、分析、调研，或者反复改同一个文件。
 
 `subagent` and `subagent_fork` are verified on real sessions. `workflow` and
-`ralph` are verified only at the code-path level. Nested subagents untested.
+`ralph` are verified only at the code-path level. Nested subagents are verified.
 Image/reasoning blocks skipped by design. Termination reason is not reported.
 When the filesystem already reveals progress, this plugin is redundant.
 
@@ -473,6 +474,11 @@ When the filesystem already reveals progress, this plugin is redundant.
 
 0.1.1 已修。升级即可。
 
+### 调用时报 `ctx.subagents.listChildren is not a function`
+
+0.2.3 已修。DSH 0.2.1 起 `subagents` 服务只发布 `listDescendants`，`listChildren`
+退成了包内部函数。升级插件并重启 DSH 即可。
+
 ### 子代理明明结束了，却显示 `progress unavailable`
 
 正常。子代理结算后 session 会卸载，进度读不到。如果它是在插件运行期间结算的，
@@ -483,7 +489,7 @@ When the filesystem already reveals progress, this plugin is redundant.
 ## 开发 / Development
 
 ```sh
-# 纯逻辑单测（不需要 DSH，51 项）
+# 纯逻辑单测（不需要 DSH，59 项）
 node test/projection.test.mjs
 
 # schema 与集成测试（需要 DSH 的 Electron 运行时读 app.asar）
